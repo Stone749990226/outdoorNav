@@ -1,0 +1,6 @@
+# Independently cloned upstream source trees and local reference material.
+/nav2/
+/ros2_src/
+/ros2_humble/
+/ros2_full/
+/*.pdf
