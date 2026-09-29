@@ -1,5 +1,5 @@
-import { campus, dist, scale, toMeters } from "./map";
-import { areaRoute, navigation, segmentSafe } from "./freeSpace";
+import { calibration, campus, dist, scale, toGeoreferenced } from "./map";
+import { route } from "./planner";
 import {
   extractWaypoints,
   serializeWaypoints,
@@ -15,26 +15,26 @@ export type ABResult = {
   blocked: string[];
 };
 export function planAB(a: Point, b: Point, blocked: string[] = []): ABResult {
-  const route = areaRoute(a, b, blocked);
-  if (route.error)
-    return { ...route, waypoints: [], plan: null, blocked: [...blocked] };
+  const path = route(a, b, blocked);
+  if (!path)
+    return { points: [], error: "A/B 不在开放中心线上，或道路已断开。", waypoints: [], plan: null, blocked: [...blocked] };
+  const points = [a, ...path.map((segment) => segment.b)];
   let distance = 0;
-  const segments = route.points.slice(1).map((point, i) => {
+  const segments = path.map((segment) => {
     const start = distance;
-    distance += dist(route.points[i], point);
+    distance += dist(segment.a, segment.b);
     return {
-      a: route.points[i],
-      b: point,
+      a: segment.a,
+      b: segment.b,
       start,
       end: distance,
-      edgeId: "free-space",
+      edgeId: segment.edgeId,
     };
   });
-  const waypoints = extractWaypoints(route.points, {
-    segmentSafe: (p, q) => segmentSafe(p, q, blocked),
-  });
+  const waypoints = extractWaypoints(points);
   return {
-    ...route,
+    points,
+    error: null,
     blocked: [...blocked],
     waypoints,
     plan: {
@@ -51,26 +51,25 @@ export function exportAB(a: Point, b: Point, result: ABResult) {
   return {
     version: "1.1.0",
     map_version: campus.version,
-    frame_id: "demo_map",
-    scale_is_mock: true,
-    georeferenced: false,
+    frame_id: calibration.frame_id,
+    calibration_version: calibration.version,
+    calibration_status: calibration.status,
+    scale_is_mock: false,
+    georeferenced: true,
+    geographic_coordinates_are_estimated: true,
     field_verified: false,
     executable_on_robot: false,
-    units: "demo_meters",
-    axes: "X right, Y up",
-    origin: "bottom_left",
+    units: "meters",
+    axes: "X east, Y north",
+    origin_wgs84: calibration.origin_wgs84,
     mode: "point_to_point",
-    planner: "grid_astar_with_clearance_checked_shortcuts",
-    start: toMeters(a),
-    goal: toMeters(b),
+    planner: "centerline_graph_astar",
+    start: toGeoreferenced(a),
+    goal: toGeoreferenced(b),
     blocked_roads: result.blocked,
     length: +(result.plan.length * scale).toFixed(3),
-    resolution_m: navigation.grid_resolution_units * scale,
-    robot_radius_m: navigation.robot_radius_units * scale,
-    road_width_m: navigation.road_width_units * scale,
-    parameters_are_mock: true,
     waypoint_extraction: waypointOptions,
-    path: result.points.map(toMeters),
+    path: result.points.map(toGeoreferenced),
     waypoints: serializeWaypoints(result.waypoints),
   };
 }

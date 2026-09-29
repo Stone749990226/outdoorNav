@@ -1,166 +1,72 @@
 import { describe, expect, it } from "vitest";
-import {
-  clearance,
-  freeGrid,
-  isTraversable,
-  segmentSafe,
-  areaRoute,
-} from "./freeSpace";
 import { exportAB, planAB } from "./abNavigation";
-import { dist, home, presets, scale } from "./map";
+import { calibration, dist, home, presets, roads, scale, toGeoreferenced } from "./map";
 import { snap } from "./planner";
-import {
-  extractWaypoints,
-  serializeWaypoints,
-  waypointCSV,
-  waypointOptions,
-} from "./waypoints";
+import { extractWaypoints, serializeWaypoints, waypointCSV } from "./waypoints";
 import { advance, initial } from "./simulation";
 import type { Point } from "./types";
-const A = { x: 869, y: 495 },
-  B = { x: 478, y: 844 };
-describe("free-area A/B navigation", () => {
-  it("preserves exact off-center endpoints and produces safe path segments", () => {
-    expect(snap(A)!.distance).toBeGreaterThan(2);
-    expect(isTraversable(A)).toBe(true);
-    expect(isTraversable(B)).toBe(true);
-    const result = planAB(A, B);
+const branch = roads.find((r) => r.id === "branch")!;
+const midpoint = (a: Point, b: Point, t: number) => ({ x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) });
+
+describe("measured centerline A/B planning", () => {
+  it("plans through the confirmed junction without cutting across the ring", () => {
+    const result = planAB(presets[2].point, home);
     expect(result.error).toBeNull();
-    expect(result.points[0]).toEqual(A);
-    expect(result.points.at(-1)).toEqual(B);
-    for (let i = 1; i < result.points.length; i++)
-      expect(segmentSafe(result.points[i - 1], result.points[i])).toBe(true);
-    const keys = result.waypoints;
-    expect(keys[0].point).toEqual(A);
-    expect(keys.at(-1)!.point).toEqual(B);
-    for (let i = 1; i < keys.length; i++) {
-      expect(segmentSafe(keys[i - 1].point, keys[i].point)).toBe(true);
-      expect(
-        (keys[i].distance - keys[i - 1].distance) * scale,
-      ).toBeLessThanOrEqual(20.001);
-    }
+    expect(result.points[0]).toEqual(presets[2].point);
+    expect(result.points.at(-1)).toEqual(home);
+    expect(result.plan!.segments.some((s) => s.edgeId === "branch")).toBe(true);
+    expect(result.waypoints.some((w) => w.reasons.includes("junction"))).toBe(true);
+    for (const p of result.points) expect(snap(p)!.distance).toBeLessThan(1e-6);
   });
-  it("supports points across the road width, not just centerline graph nodes", () => {
-    const a = { x: 861, y: 490 },
-      b = { x: 870, y: 590 };
-    const result = areaRoute(a, b);
+  it("supports two endpoints in the same segment with exact distances", () => {
+    const a = midpoint(branch.points[0], branch.points[1], 0.2);
+    const b = midpoint(branch.points[0], branch.points[1], 0.8);
+    const result = planAB(a, b);
     expect(result.error).toBeNull();
-    expect(result.points).toEqual([a, b]);
+    expect(result.plan!.length).toBeCloseTo(dist(a, b));
+    expect(result.points.at(-1)).toEqual(b);
+    expect(planAB(b, a).plan!.length).toBeCloseTo(result.plan!.length);
   });
-  it("rejects obstacles, unknown ground, exterior and insufficient footprint clearance", () => {
-    for (const p of [
-      { x: 600, y: 350 },
-      { x: 300, y: 650 },
-      { x: 20, y: 800 },
-      { x: 874, y: 500 },
-      { x: NaN, y: 500 },
-    ]) {
-      expect(isTraversable(p)).toBe(false);
-      expect(areaRoute(p, A).error).toBeTruthy();
-    }
-    expect(areaRoute(A, { x: 600, y: 350 }).error).toMatch(/B 点/);
+  it("uses the short ring arc and reroutes around its closure", () => {
+    const direct = planAB(home, presets[1].point);
+    const detour = planAB(home, presets[1].point, ["loop-a"]);
+    expect(direct.plan!.length * scale).toBeCloseTo(roads[0].length_m, 3);
+    expect(detour.plan!.length).toBeGreaterThan(direct.plan!.length);
+    expect(detour.plan!.segments.every((s) => s.edgeId === "loop-b")).toBe(true);
   });
-  it("reroutes around an entire closed road width and reports a disconnected route", () => {
-    const a = presets[1].point,
-      b = presets[2].point;
-    const normal = planAB(a, b),
-      closed = planAB(a, b, ["c-e"]);
-    expect(normal.error).toBeNull();
-    expect(closed.error).toBeNull();
-    expect(closed.plan!.length).toBeGreaterThan(normal.plan!.length);
-    closed.points
-      .slice(1)
-      .forEach((p, i) =>
-        expect(segmentSafe(closed.points[i], p, ["c-e"])).toBe(true),
-      );
-    expect(planAB(home, b, ["n-c", "ne-n"]).error).toBeTruthy();
-    expect(planAB(A, B, ["e-ne"]).error).toMatch(/A 点/);
+  it("rejects closed branch interiors, off-route points and disconnected components", () => {
+    expect(planAB(home, presets[2].point, ["branch"]).error).toBeTruthy();
+    expect(planAB(home, presets[1].point, ["loop-a", "loop-b"]).error).toBeTruthy();
+    expect(planAB({ x: -1000, y: -1000 }, home).error).toBeTruthy();
   });
-  it("accepts equal A/B and completes zero length simulation", () => {
-    const result = planAB(A, A);
-    expect(result.error).toBeNull();
+  it("completes an equal A/B task locally with a single waypoint", () => {
+    const result = planAB(home, home);
     expect(result.plan!.length).toBe(0);
     expect(result.waypoints).toHaveLength(1);
-    expect(result.waypoints[0].reasons).toEqual(
-      expect.arrayContaining(["start", "goal"]),
-    );
-    let state = {
-      ...initial([{ id: "ab-b", name: "B", point: A, dwell: 0 }], A, false),
-      plan: result.plan,
-      status: "running" as const,
-    };
+    expect(result.waypoints[0].reasons).toEqual(expect.arrayContaining(["start", "goal"]));
+    const state = { ...initial([{ id: "ab-b", name: "B", point: home, dwell: 0 }], home, false), plan: result.plan, status: "running" as const };
     expect(advance(state, 1).status).toBe("completed");
   });
-  it("simulates exactly to B and exposes conservative selectable cells", () => {
-    const result = planAB(A, B);
-    let state = {
-      ...initial([{ id: "ab-b", name: "B", point: B, dwell: 0 }], A, false),
-      plan: result.plan,
-      status: "running" as import("./types").Status,
-    };
-    for (let i = 0; i < 1000 && state.status === "running"; i++)
-      state = advance(state, 1);
-    expect(state.status).toBe("completed");
-    expect(dist(state.position, B)).toBeLessThan(1e-6);
-    expect(freeGrid().count).toBeGreaterThan(100);
-    expect(freeGrid().path).toContain("M");
-    expect(freeGrid(["c-e"]).count).toBeLessThan(freeGrid().count);
-  });
-  it("refuses unsafe straight shortcuts even when both endpoints are valid", () => {
-    expect(isTraversable(home)).toBe(true);
-    expect(isTraversable(presets[2].point)).toBe(true);
-    expect(segmentSafe(home, presets[2].point)).toBe(false);
-  });
 });
-describe("important waypoint extraction and output", () => {
-  it("reduces dense straight-line points while preserving spacing", () => {
-    const line = Array.from({ length: 121 }, (_, i) => ({
-      x: 865,
-      y: 460 + i,
-    }));
-    const keys = extractWaypoints(line, { segmentSafe });
-    expect(keys.length).toBeLessThan(6);
-    expect(keys[0].point).toEqual(line[0]);
-    expect(keys.at(-1)!.point).toEqual(line.at(-1));
-    expect(keys.some((k) => k.reasons.includes("spacing"))).toBe(true);
-    for (let i = 1; i < keys.length; i++)
-      expect(keys[i].distance - keys[i - 1].distance).toBeLessThanOrEqual(
-        waypointOptions.max_spacing_m / scale + 0.001,
-      );
-  });
-  it("keeps sharp turns and junction passages", () => {
+describe("measured route exports", () => {
+  it("exports the actual metric geometry and quality without width assumptions", () => {
     const result = planAB(home, presets[2].point);
-    expect(result.waypoints.some((k) => k.reasons.includes("turn"))).toBe(true);
-    expect(result.waypoints.some((k) => k.reasons.includes("junction"))).toBe(
-      true,
-    );
-  });
-  it("does not remove shallow necessary bends just because their angle is small", () => {
-    const points: Point[] = [
-      { x: 10, y: 10 },
-      { x: 100, y: 12 },
-      { x: 200, y: 10 },
-    ];
-    const keys = extractWaypoints(points);
-    expect(keys.some((k) => k.reasons.includes("geometry"))).toBe(true);
-  });
-  it("exports the exact computed full path and annotated keypoints, never RTK claims", () => {
-    const result = planAB(A, B),
-      data = exportAB(A, B, result);
-    expect(data.start.x).toBe(A.x * scale);
-    expect(data.start.y).toBe((920 - A.y) * scale);
-    expect(data.waypoints).toEqual(serializeWaypoints(result.waypoints));
-    expect(data.georeferenced).toBe(false);
+    const data = exportAB(home, presets[2].point, result);
+    expect(data.start).toEqual(toGeoreferenced(home));
+    expect(data.path).toEqual(result.points.map(toGeoreferenced));
+    expect(data.scale_is_mock).toBe(false);
+    expect(data.calibration_status).toBe("survey_dgps_unverified");
+    expect(data.calibration_version).toBe(calibration.version);
     expect(data.executable_on_robot).toBe(false);
-    expect(data.scale_is_mock).toBe(true);
-    expect(
-      data.waypoints.every(
-        (w) => Number.isFinite(w.yaw) && w.reasons.length > 0,
-      ),
-    ).toBe(true);
-    const csv = waypointCSV(data.waypoints);
-    expect(csv).toContain("reasons");
-    expect(csv).toContain("demo_map");
-    expect(() => exportAB(A, B, planAB(A, B, ["e-ne"]))).toThrow();
+    expect(data.planner).toBe("centerline_graph_astar");
+    expect(data).not.toHaveProperty("road_width_m");
+    expect(waypointCSV(serializeWaypoints(result.waypoints))).toContain("map");
+    expect(() => exportAB(home, presets[2].point, planAB(home, presets[2].point, ["branch"]))).toThrow();
+  });
+  it("retains needed bends and keeps spacing below twenty meters", () => {
+    const result = planAB(home, presets[2].point);
+    result.waypoints.slice(1).forEach((w, i) => expect((w.distance - result.waypoints[i].distance) * scale).toBeLessThanOrEqual(20.001));
+    const shallow = extractWaypoints([{ x: 0, y: 0 }, { x: 50, y: 2 }, { x: 100, y: 0 }]);
+    expect(shallow.some((w) => w.reasons.includes("geometry"))).toBe(true);
   });
 });

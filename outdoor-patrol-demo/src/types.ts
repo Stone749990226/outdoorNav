@@ -6,6 +6,8 @@ export type Road = {
   to: string;
   name: string;
   points: Point[];
+  length_m: number;
+  source_log: string;
 };
 export type Region = {
   id: string;

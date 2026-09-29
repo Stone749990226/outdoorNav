@@ -1,12 +1,26 @@
-# OutdoorNav - 园区巡航与路径规划演示
+# OutdoorNav - 实测路网与 Nav2 路径跟踪
 
-一个可在浏览器运行的园区二维地图与巡航规划原型。支持道路巡航、A→B 区域规划、模拟封路重规划、关键途经点提取，以及地图和路线导出。
+智慧谷北区的闭合环线和中央支路，来自 `1.ubx`、`2.ubx`。网页支持中心线选点、A→B 最短路径、多点巡航、封路重规划、路径导出和 Nav2 仿真反馈。
 
-地图由参考图片人工辅助标注；道路宽度、比例尺和机器人包络均为演示假设。项目尚未连接真实机器狗、RTK 或 ROS，导出路线不能直接用于实机导航。
+两份日志均为差分解质量 `2`，没有 RTK 固定解。道路具有实测米制尺度，绝对位置精度与道路宽度未独立验证；当前不连接真实机器狗。
+
+## 重建地图
+
+没有仓库 venv 时使用 conda 的 torch 环境：
+
+```bash
+conda run -n torch python tools/build_survey_map.py
+```
+
+脚本校验日志、识别跳点和停留、平滑并简化轨迹，裁掉环线前导段，闭环并接入已确认的支路路口。原点保存在 `survey/north_building/origin.json`，重复生成继续使用同一原点。
+
+输出原始及滤波点、米制路网、处理报告和 [独立 SVG 图](survey/north_building/map.svg)，并同步网页与 ROS2 地图。环线约 345 米，支路约 36 米；闭环修正约 0.47 米，路口修正约 2.98 米。
+
+`--no-install --output /tmp/survey-preview` 可生成独立结果而不替换网页和 ROS2 地图。旧的 `prepare_demo.py` 仅用于历史手绘图，不能覆盖当前实测地图。
 
 ## 运行
 
-需要 Node.js 22.12 或更新版本。
+Node.js 22.12 或更新版本：
 
 ```bash
 cd outdoor-patrol-demo
@@ -14,21 +28,38 @@ npm ci
 npm run dev
 ```
 
-打开终端显示的地址，通常是 <http://localhost:5173>。页面右上角的“一键演示”可运行预置巡航任务。
+打开终端显示的地址。A/B 点击位置投影到中心线；只沿已记录路线规划，不推断道路两侧自由区域。
+
+Ubuntu 22.04 / ROS2 Humble 另一个终端启动：
+
+```bash
+bash ros2_bridge/run_sim.sh
+```
+
+A→B 规划后点击“发送仿真路径”，通过 `FollowPath` 控制器驱动仿真机器人，并显示位置、剩余距离、结果及取消操作。
+
+**仿真 PGM 是无障碍测试区域，不代表真实可通行地面。** 路径、网页和桥接使用同一 `map` 原点及地图版本；导出始终标记 `executable_on_robot: false`。
 
 ## 验证
 
 ```bash
+conda run -n torch python -m unittest discover -s tools -p 'test_*.py'
 cd outdoor-patrol-demo
 npm test
 npm run build
+npx playwright install chromium
+npm run test:e2e
 ```
+
+Nav2 已启动时，用 `BRIDGE_REAL=1 npm run test:e2e` 验证真实控制器的环线路径、支路过路口、取消和版本拒绝。
 
 ## 文档
 
-- [演示项目说明](outdoor-patrol-demo/README.md)：功能、交互、算法和导出格式。
-- [三分钟演示稿](outdoor-patrol-demo/DEMO.md)：演示顺序与讲解要点。
-- [实机导航路线图](outdoor-patrol-demo/MAPPING_ROADMAP.md)：地图校准、定位与机器人对接。
-- [ROS 2 / Nav2 源码阅读笔记](docs/ROS2_SOURCE_NOTES.md)：本地学习用的上游源码阅读入口。
+- [项目说明](outdoor-patrol-demo/README.md)：交互、算法、坐标及导出格式。
+- [RTK 采图指南](docs/RTK_MAPPING_GUIDE.md)：采集、多日志处理与后续背景配准。
+- [实测地图报告](docs/SURVEY_MAP_REPORT.md)：当前数据、生成物及验收。
+- [历史配准与 Nav2 报告](docs/RTK_NAV2_REPORT.md)：旧手绘地图的两点暂定配准记录。
+- [实机导航路线图](outdoor-patrol-demo/MAPPING_ROADMAP.md)：定位、传感器与机器狗接口。
+- [ROS2 源码笔记](docs/ROS2_SOURCE_NOTES.md)：上游源码学习入口。
 
-`nav2/`、`ros2_src/` 是本机单独克隆的上游仓库，不属于本项目的提交内容；根目录的机器狗用户手册 PDF 也只保留在本机。
+独立克隆的上游源码和本机机器狗手册不属于本项目提交内容。

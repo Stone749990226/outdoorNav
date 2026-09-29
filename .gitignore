@@ -4,3 +4,7 @@
 /ros2_humble/
 /ros2_full/
 /*.pdf
+**/__pycache__/
+/.ros-build/
+/.ros-install/
+/.ros-log/

@@ -1,0 +1,22 @@
+{
+  "version": "survey-388df4ebbef8",
+  "map_version": "survey-388df4ebbef8",
+  "status": "survey_dgps_unverified",
+  "robot_executable": false,
+  "frame_id": "map",
+  "origin_wgs84": {
+    "latitude": 30.22413029,
+    "longitude": 120.25979315833334
+  },
+  "map_origin_svg": {
+    "x": 88.0,
+    "y": 160.0
+  },
+  "meters_per_unit": 0.125,
+  "rotation_rad": 0,
+  "source_logs": [
+    "1.ubx",
+    "2.ubx"
+  ],
+  "warning": "DGPS measurements; absolute accuracy unverified; simulation only."
+}

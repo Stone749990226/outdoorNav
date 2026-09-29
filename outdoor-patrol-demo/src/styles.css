@@ -80,6 +80,30 @@ button svg {
 svg text {
   user-select: none;
 }
+.ab-bridge {
+  display: grid;
+  gap: 9px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+.ab-bridge-actions {
+  display: flex;
+  gap: 8px;
+}
+.ab-bridge-actions button {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid #ffffff24;
+  border-radius: 4px;
+  background: #1c3030;
+}
+.ab-bridge-actions button:first-child {
+  flex: 1;
+}
+.ab-bridge small {
+  color: #b8c7c0;
+  overflow-wrap: anywhere;
+}
 .app-shell {
   height: 100dvh;
   min-height: 660px;
@@ -211,7 +235,7 @@ svg text {
 }
 .page-heading h1 {
   font-size: 24px;
-  letter-spacing: 0.8px;
+  letter-spacing: 0;
   font-weight: 550;
   margin-top: 7px;
 }
@@ -743,7 +767,7 @@ svg text {
 .task-label {
   font-size: 12px;
   fill: #c1d6c8;
-  letter-spacing: 0.4px;
+  letter-spacing: 0;
 }
 .map-coordinates {
   position: absolute;
@@ -753,7 +777,7 @@ svg text {
   align-items: center;
   gap: 8px;
   font: 8px monospace;
-  letter-spacing: 1px;
+  letter-spacing: 0;
   color: #91ad9d;
   pointer-events: none;
 }
@@ -779,10 +803,10 @@ svg text {
 }
 .zoom-controls {
   position: absolute;
-  right: 15px;
-  bottom: 80px;
+  bottom: 14px;
+  right: 80px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   background: #152420d9;
   border: 1px solid #78968025;
   border-radius: 6px;
@@ -793,11 +817,11 @@ svg text {
   color: #a4b8a5;
 }
 .zoom-controls button + button {
-  border-top: 1px solid #ffffff09;
+  border-left: 1px solid #ffffff09;
 }
 .map-legend {
   position: absolute;
-  bottom: 46px;
+  bottom: 60px;
   left: 20px;
   display: flex;
   flex-wrap: wrap;

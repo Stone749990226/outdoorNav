@@ -49,11 +49,13 @@ export function route(
   if (
     !startSnap ||
     !endSnap ||
-    startSnap.distance > 0.1 ||
-    endSnap.distance > 0.1
+    startSnap.distance > 0.000001 ||
+    endSnap.distance > 0.000001
   )
     return null;
-  const key = (p: Point) => `${p.x.toFixed(4)},${p.y.toFixed(4)}`;
+  startSnap.point = { ...start };
+  endSnap.point = { ...end };
+  const key = (p: Point) => `${p.x.toFixed(9)},${p.y.toFixed(9)}`;
   const points = new Map<string, Point>(),
     graph = new Map<string, Arc[]>();
   const add = (p: Point) => {

@@ -26,7 +26,7 @@ export function initial(
       {
         id: 0,
         time: 0,
-        text: "园区地图已就绪 · 通行性为图片推定",
+        text: "实测中心线路网已就绪 · 绝对位置精度未验证",
         kind: "info",
       },
     ],
@@ -73,14 +73,14 @@ export function planSimulation(state: Simulation, run = false): Simulation {
   };
   return log(
     next,
-    error ?? `路线已生成 · ${(plan!.length * scale).toFixed(0)} 演示米`,
+    error ?? `路线已生成 · ${(plan!.length * scale).toFixed(0)} 米`,
     error ? "warning" : "success",
   );
 }
 export function startDemo(): Simulation {
   return log(
-    planSimulation({ ...initial(), autoDemo: true }, true),
-    "一键演示开始 · 将在中央路口演示前方封路",
+    planSimulation(initial(), true),
+    "开始实测路网巡航演示",
   );
 }
 export function toggleRoad(state: Simulation, id: string): Simulation {
@@ -148,10 +148,6 @@ export function advance(state: Simulation, dt: number): Simulation {
         s.completed.push(stop.id);
       s.stopIndex++;
       s.dwelling = false;
-      if (s.autoDemo && !s.autoTriggered && stop.id === "p-c") {
-        s = toggleRoad({ ...s, autoTriggered: true }, "c-e");
-        s = log(s, "已从当前位置绕行 · 已完成巡检点保持不变", "success");
-      }
       if (s.stopIndex >= s.plan!.stops.length)
         s = log(
           { ...s, status: "completed" },

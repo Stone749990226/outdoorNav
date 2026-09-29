@@ -31,6 +31,8 @@ import { ABWorkspace } from "./ABWorkspace";
 import { MapView, type Layers, type Mode, type Reference } from "./MapView";
 import {
   presets,
+  campus,
+  calibration,
   roads,
   regions,
   containsPoint,
@@ -61,8 +63,8 @@ const fmtTime = (t: number) =>
   `${Math.floor(t / 60)
     .toString()
     .padStart(2, "0")}:${Math.floor(t % 60)
-    .toString()
-    .padStart(2, "0")}`;
+      .toString()
+      .padStart(2, "0")}`;
 export default function App() {
   const [workspaceMode, setWorkspaceMode] = useState<"patrol" | "ab">("patrol");
   const [state, setState] = useState<Simulation>(() =>
@@ -109,12 +111,12 @@ export default function App() {
     : 0;
   const remainingDwell = state.plan
     ? state.plan.stops
-        .slice(state.stopIndex)
-        .reduce(
-          (sum, stop, i) =>
-            sum + (i === 0 && state.dwelling ? state.dwell : stop.dwell),
-          0,
-        )
+      .slice(state.stopIndex)
+      .reduce(
+        (sum, stop, i) =>
+          sum + (i === 0 && state.dwelling ? state.dwell : stop.dwell),
+        0,
+      )
     : 0;
   useEffect(() => {
     let id: number;
@@ -171,7 +173,7 @@ export default function App() {
     [tasks[index], tasks[index + step]] = [tasks[index + step], tasks[index]];
     updateTask(tasks);
   };
-  const pick = (p: Point) => {
+  const pick = (p: Point, tolerance: number) => {
     if (mode === "inspect" || mode === "block") return;
     if (!editable) {
       notify("请先重置巡航，再编辑起点和任务。");
@@ -181,9 +183,10 @@ export default function App() {
       notify("这个位置位于建筑、绿化或待核实地面内，请选择道路。");
       return;
     }
-    const projected = snap(p, state.blocked);
-    if (!projected || projected.distance > 18) {
-      notify("请选择开放道路附近的位置；建筑、绿化和待核实地面不能作为目标。");
+    const projected = snap(p);
+    const open = projected && snap(projected.point, state.blocked);
+    if (!projected || projected.distance > tolerance || !open || open.distance > 0.0001) {
+      notify("该位置不在开放路线附近。");
       return;
     }
     if (mode === "start") {
@@ -212,7 +215,7 @@ export default function App() {
     if (mode !== "block") {
       const r = roads.find((r) => r.id === id)!;
       notify(
-        `${r.name} · ${state.blocked.includes(id) ? "人工封闭" : "图片推定可通行 · 未现场验证"}`,
+        `${r.name} · ${state.blocked.includes(id) ? "人工封闭" : "实测中心线 · 绝对精度未验证"}`,
       );
       return;
     }
@@ -256,7 +259,7 @@ export default function App() {
             <Route size={24} />
           </span>
           <span className="brand-name">
-            巡境<span>FIELD / NAV</span>
+            <span>FIELD / NAV</span>
           </span>
         </a>
         <div className="header-divider" />
@@ -284,10 +287,11 @@ export default function App() {
             MISSION CONTROL <span>/ 01</span>
           </div>
           <h1>
-            让每一次巡航，都有迹可循<span className="heading-dot">.</span>
+            <span className="heading-dot"></span>
+            智慧谷北区
           </h1>
           <p>
-            杭州湾智慧谷 <span> / </span> 二维语义地图与全局路径规划
+            实测环线 <span> / </span> 中央支路
           </p>
         </div>
         <div className="heading-actions">
@@ -319,7 +323,7 @@ export default function App() {
               </summary>
               <div className="dropdown">
                 <button onClick={mapDownload}>
-                  地图 JSON<span>区域与道路网络</span>
+                  地图 JSON<span>实测中心线路网</span>
                 </button>
                 <button onClick={routeDownload} disabled={!routeValid}>
                   路线 JSON<span>完整折线与任务顺序</span>
@@ -501,14 +505,14 @@ export default function App() {
                 <p>
                   沿已标注道路规划
                   <br />
-                  <span>未知区域默认不参与通行</span>
+                  <span>仅沿已记录路线规划</span>
                 </p>
               </div>
               <div className="left-bottom">
                 <span className="eyebrow">MAP SOURCE</span>
                 <p>卫星影像 + 路网辅助重绘</p>
-                <span className="source-tag">人工辅助标注</span>
-                <span className="source-tag">v1.0</span>
+                <span className="source-tag">DGPS 实测</span>
+                <span className="source-tag">{campus.version}</span>
               </div>
             </aside>
             <section className="map-panel panel">
@@ -525,7 +529,7 @@ export default function App() {
                     }
                   >
                     <LayersIcon size={14} />
-                    语义地图
+                    实测路线
                   </button>
                   <button
                     className={layers.access ? "active" : ""}
@@ -586,8 +590,8 @@ export default function App() {
                   </div>
                   {(
                     [
-                      ["semantic", "语义标注"],
-                      ["access", "通行性与可达性"],
+                      ["semantic", "巡检点名称"],
+                      ["access", "路线可达性"],
                       ["network", "道路拓扑网络"],
                       ["route", "路线与途经点"],
                       ["reference", "导入的参考图片"],
@@ -770,7 +774,7 @@ export default function App() {
                   <h2>巡航任务完成</h2>
                   <p>
                     到访 {state.completed.length} 个巡检点 · 行走{" "}
-                    {(state.traveled * scale).toFixed(0)} 演示米 · 重规划{" "}
+                    {(state.traveled * scale).toFixed(0)} 米 · 重规划{" "}
                     {state.replans} 次
                   </p>
                   <button onClick={routeDownload}>
@@ -787,9 +791,9 @@ export default function App() {
                 </span>
                 <span>
                   <Crosshair size={12} /> {coordinate.x.toFixed(1)},{" "}
-                  {coordinate.y.toFixed(1)} <small>演示米</small>
+                  {coordinate.y.toFixed(1)} <small>米</small>
                 </span>
-                <span className="frame-tag">demo_map</span>
+                <span className="frame-tag">{calibration.frame_id}</span>
               </div>
             </section>
             <aside className="right-panel panel">
@@ -983,7 +987,7 @@ export default function App() {
             </div>
             <div className="footer-note">
               <span className="live-dot" />
-              模拟巡航 · 图片辅助标注 · 尺度未校准
+              DGPS 实测 · 仿真巡航 · 绝对精度未验证
             </div>
           </footer>
         </>
@@ -1053,7 +1057,7 @@ export default function App() {
                 <b>01</b>
                 <span>
                   <strong>认识地图</strong>
-                  切换语义、通行性与道路网络图层。阴影只是建筑投影，看不清的地面保留为待核实。
+                  查看实测路线、道路连接与当前可达状态。
                 </span>
               </p>
               <p>
@@ -1080,8 +1084,7 @@ export default function App() {
               </p>
             </div>
             <div className="guide-note">
-              这是基于图片的全局地图与规划演示。距离为假设尺度，尚未对齐
-              RTK；没有真实机器人、实时感知或自动语义建图接入。
+              地图来自两段差分解轨迹，采用米制坐标。绝对位置精度尚未独立验证；当前连接 Nav2 仿真机器人。
             </div>
             <button className="primary" onClick={() => setHelp(false)}>
               开始探索 <ArrowUpRight size={16} />

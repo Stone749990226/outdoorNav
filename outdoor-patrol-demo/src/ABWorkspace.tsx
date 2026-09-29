@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   ArrowRightLeft,
@@ -12,13 +12,16 @@ import {
   Play,
   RotateCcw,
   Route,
+  Send,
+  Square,
   X,
 } from "lucide-react";
 import { MapView, type Layers, type Mode } from "./MapView";
-import { freeGrid, isTraversable, navigation } from "./freeSpace";
+import { snap } from "./planner";
 import { exportAB, planAB, type ABResult } from "./abNavigation";
 import { download, exportMap } from "./export";
-import { home, scale, toMeters, roads } from "./map";
+import { calibration, dist, home, mapToSvg, scale, toMeters, roads } from "./map";
+import { bridgeStatus, cancelSimulationRoute, sendSimulationRoute, type BridgeStatus } from "./rosBridge";
 import { advance, initial } from "./simulation";
 import { reasonNames, serializeWaypoints, waypointCSV } from "./waypoints";
 import type { Point, Simulation } from "./types";
@@ -40,14 +43,15 @@ export function ABWorkspace() {
   const [blocked, setBlocked] = useState<string[]>([]),
     [blockMode, setBlockMode] = useState(false);
   const [result, setResult] = useState<ABResult | null>(null),
-    [message, setMessage] = useState("选择亮绿色区域内的 A 点，再选择 B 点。");
+    [message, setMessage] = useState("等待选择 A/B");
   const [layers, setLayers] = useState(emptyLayers),
-    [showArea, setShowArea] = useState(true),
-    [showKeys, setShowKeys] = useState(true);
+    [showKeys, setShowKeys] = useState(true),
+    [showSurvey, setShowSurvey] = useState(false);
+  const [bridge, setBridge] = useState<BridgeStatus | null>(null),
+    [bridgeError, setBridgeError] = useState("");
   const [preview, setPreview] = useState<Simulation | null>(null);
   const [busy, setBusy] = useState(false);
   const generation = useRef(0);
-  const grid = useMemo(() => freeGrid(blocked), [blocked]);
   useEffect(() => {
     let id: number,
       last = performance.now();
@@ -66,29 +70,50 @@ export function ABWorkspace() {
     },
     [],
   );
+  useEffect(() => {
+    let active = true;
+    const refresh = () => {
+      bridgeStatus()
+        .then((status) => {
+          if (!active) return;
+          setBridge(status);
+          setBridgeError("");
+        })
+        .catch(() => {
+          if (!active) return;
+          setBridge(null);
+        });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 1000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
   const invalidate = () => {
     generation.current++;
     setResult(null);
     setPreview(null);
     setBusy(false);
   };
-  const pick = (p: Point) => {
+  const pick = (p: Point, tolerance: number) => {
     if (!selection || blockMode) return;
-    if (!isTraversable(p, blocked)) {
-      setMessage(
-        "该位置不满足通行条件：请选择亮绿色区域内侧，避开建筑、未知区域与封路。",
-      );
+    const projected = snap(p);
+    const open = projected && snap(projected.point, blocked);
+    if (!projected || projected.distance > tolerance || !open || open.distance > 0.0001) {
+      setMessage("该位置不在开放路线附近。");
       return;
     }
     invalidate();
     if (selection === "a") {
-      setA(p);
+      setA(projected.point);
       setSelection("b");
-      setMessage("A 点已保留在点击位置。现在选择 B 点。");
+      setMessage("A 点已投影到中心线。");
     } else {
-      setB(p);
+      setB(projected.point);
       setSelection(null);
-      setMessage("A、B 已选好，点击「规划 A→B」。点位不会吸附到中心线。");
+      setMessage("A/B 已投影到中心线。");
     }
   };
   const compute = () => {
@@ -104,7 +129,7 @@ export function ABWorkspace() {
         setPreview(null);
         setMessage(
           next.error ??
-            `路线已生成 · ${next.waypoints.length} 个重要途经点 · 保留原始 A/B 坐标`,
+            `路线已生成 · ${next.waypoints.length} 个重要途经点`,
         );
       } catch {
         setResult(null);
@@ -128,7 +153,7 @@ export function ABWorkspace() {
     setBlocked([]);
     setSelection("a");
     setBlockMode(false);
-    setMessage("选择亮绿色区域内的 A 点，再选择 B 点。");
+    setMessage("等待选择 A/B");
   };
   const swap = () => {
     invalidate();
@@ -138,6 +163,25 @@ export function ABWorkspace() {
     setMessage("A/B 已交换，请重新规划。");
   };
   const valid = !!result?.plan;
+  const compatibleBridge = bridge?.calibration_version === calibration.version;
+  const bridgeActive = compatibleBridge && bridge && ["queued", "running", "canceling"].includes(bridge.phase);
+  const sendToNav2 = async () => {
+    if (!a || !b || !result || !valid) return;
+    try {
+      setBridgeError("");
+      setBridge(await sendSimulationRoute(exportAB(a, b, result)));
+    } catch (error) {
+      setBridgeError(error instanceof Error ? error.message : "发送失败");
+    }
+  };
+  const cancelNav2 = async () => {
+    try {
+      setBridgeError("");
+      setBridge(await cancelSimulationRoute());
+    } catch (error) {
+      setBridgeError(error instanceof Error ? error.message : "取消失败");
+    }
+  };
   const state: Simulation = preview ?? {
     ...initial(
       b ? [{ id: "ab-b", name: "B 点 / 终点", point: b, dwell: 0 }] : [],
@@ -149,24 +193,31 @@ export function ABWorkspace() {
     status: result?.error ? "blocked" : valid ? "ready" : "idle",
     position: a ?? home,
   };
-  const overlay = (
+  const overlay = (markerScale: number) => (
     <g pointerEvents="none">
+      {compatibleBridge && bridge?.pose && (
+        <g
+          transform={`translate(${mapToSvg(bridge.pose).x} ${mapToSvg(bridge.pose).y}) scale(${markerScale})`}
+          data-testid="ros-robot-pose"
+        >
+          <circle r="9" fill="#6cb5e7" stroke="#e7f7ff" strokeWidth="2" />
+          <circle r="2" fill="#09202d" />
+        </g>
+      )}
       {showKeys &&
-        result?.waypoints.map((w, i) => (
+        result?.waypoints.filter((w) => !w.reasons.includes("start") && !w.reasons.includes("goal")).map((w) => (
           <g
-            key={i}
-            transform={`translate(${w.point.x} ${w.point.y})`}
+            key={w.distance}
+            transform={`translate(${w.point.x} ${w.point.y}) scale(${markerScale})`}
             data-testid="important-waypoint"
           >
-            <circle r="6" fill="#101e19" stroke="#f3d999" strokeWidth="2" />
-            <text x="10" y="-9" className="key-label">
-              K{i + 1}
-            </text>
+            <circle r={w.reasons.every((r) => r === "geometry") ? 2 : 4} fill="#101e19" stroke="#f3d999" strokeWidth="1.5" />
+            {w.reasons.some((r) => ["junction", "turn", "spacing"].includes(r)) && (!a || dist(w.point, a) > markerScale * 28) && (!b || dist(w.point, b) > markerScale * 28) && <text x="8" y="-8" className="key-label">K{result!.waypoints.indexOf(w) + 1}</text>}
           </g>
         ))}
       {a && (
         <g
-          transform={`translate(${a.x} ${a.y})`}
+          transform={`translate(${a.x} ${a.y}) scale(${markerScale})`}
           data-testid="ab-a"
           data-x={a.x}
           data-y={a.y}
@@ -185,7 +236,7 @@ export function ABWorkspace() {
       )}
       {b && (
         <g
-          transform={`translate(${b.x} ${b.y})`}
+          transform={`translate(${b.x} ${b.y}) scale(${markerScale})`}
           data-testid="ab-b"
           data-x={b.x}
           data-y={b.y}
@@ -226,14 +277,12 @@ export function ABWorkspace() {
           <div className="panel-heading">
             <div>
               <span className="eyebrow">POINT TO POINT</span>
-              <h2>A → B 区域导航</h2>
+              <h2>A → B 路线规划</h2>
             </div>
             <Route size={20} className="mint" />
           </div>
           <p className="ab-description">
-            在可通行区域内任选起终点。
-            <br />
-            保留点击位置，不吸附中心线。
+            智慧谷北区 · 环线与中央支路
           </p>
           <button
             className={`endpoint-card ${selection === "a" ? "selected" : ""}`}
@@ -279,24 +328,40 @@ export function ABWorkspace() {
             {busy ? "规划中…" : "规划 A→B"}
             <ArrowRight size={16} />
           </button>
+          <div className="ab-bridge">
+            <span className="eyebrow">NAV2 / 仿真</span>
+            <div className="ab-bridge-actions">
+              <button disabled={!valid || !compatibleBridge || !!bridgeActive || result!.plan!.length === 0} onClick={sendToNav2}>
+                <Send size={14} />
+                发送仿真路径
+              </button>
+              <button title="取消 Nav2 仿真" disabled={!bridgeActive} onClick={cancelNav2}>
+                <Square size={14} />
+              </button>
+            </div>
+            <small role="status" data-testid="bridge-status">
+              {bridgeError || (bridge ? !compatibleBridge ? "地图版本不一致，请更新 ROS2 地图并重启桥接" : bridge.message : "ROS2 桥接未连接")}
+              {!bridgeError && compatibleBridge && bridge?.distance_remaining != null && <span style={{ whiteSpace: "nowrap" }}> · 剩余 {bridge.distance_remaining.toFixed(1)} m</span>}
+            </small>
+            {compatibleBridge && bridge?.pose && <small>仿真位置 {bridge.pose.x.toFixed(2)}, {bridge.pose.y.toFixed(2)} m</small>}
+          </div>
           <div className="ab-model">
-            <span className="eyebrow">当前通行模型</span>
-            <p>有宽度的道路区域，扣除建筑、绿化、未知地面与封闭路段。</p>
+            <span className="eyebrow">实测路网</span>
             <dl>
               <div>
-                <dt>道路假设宽度</dt>
-                <dd>{navigation.road_width_units * scale} m*</dd>
+                <dt>环线</dt>
+                <dd>{roads.filter((r) => r.id !== "branch").reduce((sum, r) => sum + r.length_m, 0).toFixed(1)} m</dd>
               </div>
               <div>
-                <dt>圆形包络半径</dt>
-                <dd>{navigation.robot_radius_units * scale} m*</dd>
+                <dt>中央支路</dt>
+                <dd>{roads.find((r) => r.id === "branch")!.length_m.toFixed(1)} m</dd>
               </div>
               <div>
-                <dt>规划栅格大小</dt>
-                <dd>{navigation.grid_resolution_units * scale} m*</dd>
+                <dt>采集解状态</dt>
+                <dd>DGPS · 质量 2</dd>
               </div>
             </dl>
-            <small>* 演示米，参数未实测。亮绿色区域已预留边界余量。</small>
+            <small>绝对位置精度与道路宽度未验证。</small>
           </div>
           <div className="ab-export">
             <button disabled={!valid} onClick={exportJSON}>
@@ -324,16 +389,22 @@ export function ABWorkspace() {
           <div className="map-toolbar">
             <div className="map-tabs">
               <button
-                className={showArea ? "active" : ""}
-                onClick={() => setShowArea(!showArea)}
+                className={layers.route ? "active" : ""}
+                onClick={() => setLayers((l) => ({ ...l, route: !l.route }))}
               >
-                可通行区域
+                规划路线
               </button>
               <button
                 className={showKeys ? "active" : ""}
                 onClick={() => setShowKeys(!showKeys)}
               >
                 重要途经点
+              </button>
+              <button
+                className={showSurvey ? "active" : ""}
+                onClick={() => setShowSurvey(!showSurvey)}
+              >
+                原始 / 滤波
               </button>
             </div>
             <div className="map-tools">
@@ -376,15 +447,15 @@ export function ABWorkspace() {
               blockMode
                 ? closeRoad(id)
                 : setMessage(
-                    `${roads.find((r) => r.id === id)?.name} · 图片推定可通行`,
+                    `${roads.find((r) => r.id === id)?.name} · 实测中心线`,
                   )
             }
             onInfo={setMessage}
-            areaMode
-            areaOverlay={showArea ? grid.path : undefined}
+            showSurvey={showSurvey}
             overlay={overlay}
             hideRobot={!preview}
-            hideHome={!a}
+            hideHome
+            hideTasks
           />
           {blockMode && (
             <div className="floating-panel road-panel">
@@ -411,15 +482,6 @@ export function ABWorkspace() {
                   </button>
                 ))}
               </div>
-            </div>
-          )}
-          {selection && (
-            <div className="mode-hint">
-              <Crosshair size={14} />
-              点击可通行区域选择 {selection.toUpperCase()} 点
-              <button title="退出 A/B 选点" onClick={() => setSelection(null)}>
-                <X size={14} />
-              </button>
             </div>
           )}
           {preview?.status === "completed" && (
@@ -449,7 +511,7 @@ export function ABWorkspace() {
               <small>路线长度</small>
               <strong>
                 {valid ? (result!.plan!.length * scale).toFixed(1) : "—"}
-                <span>m*</span>
+                <span>m</span>
               </strong>
             </div>
             <div>
@@ -460,10 +522,6 @@ export function ABWorkspace() {
               </strong>
             </div>
           </div>
-          <p className="ab-description">
-            保留起终点、路口、≥25° 转弯和最长 20 m*
-            间隔；必要时补点，避免简化后切入障碍。
-          </p>
           <div className="keypoint-list" data-testid="keypoint-list">
             {result?.waypoints.map((w, i) => (
               <div className="keypoint-row" key={i}>
@@ -472,10 +530,10 @@ export function ABWorkspace() {
                   <strong>
                     {w.reasons.map((r) => reasonNames[r]).join(" · ")}
                   </strong>
-                  <span>{coordinate(w.point)} m*</span>
+                  <span>{coordinate(w.point)} m</span>
                   <small>
                     朝向 {((w.yaw * 180) / Math.PI).toFixed(0)}° · 累计{" "}
-                    {(w.distance * scale).toFixed(1)} m*
+                    {(w.distance * scale).toFixed(1)} m
                   </small>
                 </div>
               </div>
@@ -489,7 +547,7 @@ export function ABWorkspace() {
           <div className="ab-calibration">
             <strong>地图可达 ≠ 现场已验证</strong>
             <p>
-              输出为 demo_map 局部坐标。未对齐 RTK，不能作为已验证的实机路线。
+              两段差分解轨迹；路口连接已确认。绝对位置精度尚未独立验证。
             </p>
           </div>
         </aside>
@@ -544,12 +602,12 @@ export function ABWorkspace() {
         </div>
         <div className="ab-footer-summary">
           {valid
-            ? `${result!.waypoints.length} 个重要途经点 · 相邻关键点连线已做通行校验`
-            : "可选择道路宽度范围内的位置，不局限于预置节点"}
+            ? `${result!.waypoints.length} 个重要途经点 · 中心线路径`
+            : "环线 + 中央支路"}
         </div>
         <div className="footer-note">
           <span className="live-dot" />
-          图片辅助标注 · 尺度未校准
+          DGPS 实测 · 绝对精度未验证
         </div>
       </footer>
     </>

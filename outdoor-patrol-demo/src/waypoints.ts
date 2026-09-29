@@ -1,4 +1,4 @@
-import { campus, dist, scale, toMeters } from "./map";
+import { calibration, campus, dist, mapYaw, scale, toGeoreferenced } from "./map";
 import type { Plan, Point } from "./types";
 export const waypointOptions = {
   turn_degrees: 25,
@@ -201,8 +201,8 @@ export const planPoints = (plan: Plan) => [
 export function serializeWaypoints(points: KeyWaypoint[]) {
   return points.map((w, i) => ({
     sequence: i + 1,
-    ...toMeters(w.point),
-    yaw: +w.yaw.toFixed(5),
+    ...toGeoreferenced(w.point),
+    yaw: +mapYaw(w.yaw).toFixed(5),
     distance_m: +(w.distance * scale).toFixed(3),
     kind: w.reasons.includes("inspect")
       ? "inspect"
@@ -221,14 +221,16 @@ export function waypointCSV(rows: ReturnType<typeof serializeWaypoints>) {
   return (
     "\uFEFF" +
     [
-      "sequence,frame_id,scale_is_mock,x,y,yaw,kind,reasons,name,dwell_seconds,distance_m",
+      "sequence,frame_id,calibration_status,x,y,latitude,longitude,yaw,kind,reasons,name,dwell_seconds,distance_m",
       ...rows.map((w) =>
         [
           w.sequence,
-          "demo_map",
-          true,
+          calibration.frame_id,
+          calibration.status,
           w.x,
           w.y,
+          w.latitude,
+          w.longitude,
           w.yaw,
           w.kind,
           w.reasons.join("|"),

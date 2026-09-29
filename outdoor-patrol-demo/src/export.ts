@@ -1,4 +1,4 @@
-import { campus, regions, roads, toMeters, scale } from "./map";
+import { calibration, campus, regions, roads, toGeoreferenced, toMap, scale } from "./map";
 import {
   extractWaypoints,
   planPoints,
@@ -9,12 +9,28 @@ import {
 import type { Simulation } from "./types";
 const frame = {
   version: "1.0.0",
-  frame_id: "demo_map",
-  scale_is_mock: true,
-  units: "demo_meters",
-  axes: "X right, Y up",
-  origin: "bottom_left",
-  georeferenced: false,
+  frame_id: calibration.frame_id,
+  calibration_version: calibration.version,
+  calibration_status: calibration.status,
+  scale_is_mock: false,
+  units: "meters",
+  axes: "X east, Y north",
+  origin_wgs84: calibration.origin_wgs84,
+  georeferenced: true,
+  geographic_coordinates_are_estimated: true,
+  executable_on_robot: false,
+};
+const corners = [
+  { x: 0, y: 0 },
+  { x: campus.width, y: 0 },
+  { x: 0, y: campus.height },
+  { x: campus.width, y: campus.height },
+].map(toMap);
+const bounds = {
+  min_x: Math.min(...corners.map((p) => p.x)),
+  min_y: Math.min(...corners.map((p) => p.y)),
+  max_x: Math.max(...corners.map((p) => p.x)),
+  max_y: Math.max(...corners.map((p) => p.y)),
 };
 export function exportMap(blocked: string[]) {
   return {
@@ -22,29 +38,24 @@ export function exportMap(blocked: string[]) {
     map_version: campus.version,
     name: campus.name,
     source: campus.source,
-    traversable_area_model: {
-      type: "road_corridors_minus_regions_and_closures",
-      road_width_m: campus.navigation.road_width_units * scale,
-      robot_radius_m: campus.navigation.robot_radius_units * scale,
-      grid_resolution_m: campus.navigation.grid_resolution_units * scale,
-      parameters_are_mock: true,
-    },
-    width: campus.width * scale,
-    height: campus.height * scale,
+    route_model: { type: "centerline_graph", road_width_measured: false },
+    bounds_m: bounds,
+    width: bounds.max_x - bounds.min_x,
+    height: bounds.max_y - bounds.min_y,
     regions: regions.map((r) => ({
       ...r,
-      points: r.points.map(toMeters),
+      points: r.points.map(toGeoreferenced),
       traversability: r.kind === "building" ? "forbidden" : "unknown",
     })),
-    nodes: campus.nodes.map((n) => ({ ...n, ...toMeters(n) })),
+    nodes: campus.nodes.map((n) => ({ ...n, ...toGeoreferenced(n) })),
     roads: roads.map((r) => ({
       ...r,
-      points: r.points.map(toMeters),
+      points: r.points.map(toGeoreferenced),
       bidirectional: true,
-      traversability: blocked.includes(r.id) ? "closed" : "presumed_passable",
+      traversability: blocked.includes(r.id) ? "closed" : "recorded_centerline",
       field_verified: false,
     })),
-    tasks: campus.tasks.map((t) => ({ ...t, point: toMeters(t.point) })),
+    tasks: campus.tasks.map((t) => ({ ...t, point: toGeoreferenced(t.point) })),
   };
 }
 export function exportRoute(s: Simulation) {
@@ -59,16 +70,16 @@ export function exportRoute(s: Simulation) {
     map_version: campus.version,
     task_order: s.tasks.map((t) => t.id),
     remaining_task_order: plan.taskOrder,
-    tasks: s.tasks.map((t) => ({ ...t, point: toMeters(t.point) })),
+    tasks: s.tasks.map((t) => ({ ...t, point: toGeoreferenced(t.point) })),
     return_home: s.returnHome,
-    home: toMeters(s.home),
-    traveled_path: [...s.trace, s.position].map(toMeters),
+    home: toGeoreferenced(s.home),
+    traveled_path: [...s.trace, s.position].map(toGeoreferenced),
     task_names: plan.stops.map((t) => t.name),
     completed_task_ids: s.completed,
     blocked_roads: s.blocked,
     length: +(plan.length * scale).toFixed(3),
     traveled: +(s.traveled * scale).toFixed(3),
-    path: [plan.start, ...plan.segments.map((seg) => seg.b)].map(toMeters),
+    path: [plan.start, ...plan.segments.map((seg) => seg.b)].map(toGeoreferenced),
     waypoint_extraction: waypointOptions,
     waypoints,
   };
