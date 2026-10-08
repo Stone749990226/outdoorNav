@@ -73,6 +73,7 @@ export default function App() {
   const [speed, setSpeed] = useState(5);
   const [mode, setMode] = useState<Mode>("inspect");
   const [layers, setLayers] = useState<Layers>({
+    basemap: true,
     semantic: true,
     access: false,
     network: false,
@@ -590,6 +591,7 @@ export default function App() {
                   </div>
                   {(
                     [
+                      ["basemap", "园区示意底图"],
                       ["semantic", "巡检点名称"],
                       ["access", "路线可达性"],
                       ["network", "道路拓扑网络"],

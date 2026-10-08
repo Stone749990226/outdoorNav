@@ -4,8 +4,9 @@ import { calibration, campus, roads, pathD, scale, toMap } from "./map";
 import survey from "./survey_trace.json";
 import { reachableRoads } from "./planner";
 import type { Point, Simulation } from "./types";
+import basemapUrl from "./assets/north-building-basemap.svg";
 
-export type Layers = { semantic: boolean; access: boolean; network: boolean; route: boolean; reference: boolean };
+export type Layers = { basemap: boolean; semantic: boolean; access: boolean; network: boolean; route: boolean; reference: boolean };
 export type Reference = { url: string; opacity: number; x: number; y: number; scale: number };
 export type Mode = "inspect" | "start" | "target" | "block";
 type Props = {
@@ -74,6 +75,9 @@ export function MapView({ state, layers, mode, reference, onPick, onRoad, onInfo
         <g ref={world} transform={`translate(${width / 2 + view.x} ${height / 2 + view.y}) scale(${view.zoom}) translate(${-width / 2} ${-height / 2})`}>
           <rect x={-width * 3} y={-height * 3} width={width * 7} height={height * 7} fill="#1c2223" />
           <rect x={-width * 3} y={-height * 3} width={width * 7} height={height * 7} fill="url(#metric-grid)" />
+          {/* Artwork is authored in the current survey's SVG frame, below every interactive layer. */}
+          {layers.basemap && <image data-testid="campus-basemap" href={basemapUrl} x="0" y="0"
+            width="976" height="952" pointerEvents="none" aria-label="园区示意底图" />}
           {reference && layers.reference && <image href={reference.url} x={reference.x} y={reference.y}
             width={width * reference.scale} height={height * reference.scale} opacity={reference.opacity}
             preserveAspectRatio="xMidYMid meet" pointerEvents="none" />}

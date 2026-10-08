@@ -8,6 +8,7 @@ import {
   Download,
   Flag,
   LocateFixed,
+  Map as MapIcon,
   Pause,
   Play,
   RotateCcw,
@@ -26,6 +27,7 @@ import { advance, initial } from "./simulation";
 import { reasonNames, serializeWaypoints, waypointCSV } from "./waypoints";
 import type { Point, Simulation } from "./types";
 const emptyLayers: Layers = {
+  basemap: true,
   semantic: true,
   access: false,
   network: false,
@@ -408,6 +410,11 @@ export function ABWorkspace() {
               </button>
             </div>
             <div className="map-tools">
+              <button title="显示园区底图" aria-pressed={layers.basemap}
+                className={layers.basemap ? "active" : ""}
+                onClick={() => setLayers((l) => ({ ...l, basemap: !l.basemap }))}>
+                <MapIcon size={16} />
+              </button>
               <button
                 title="A/B 道路封闭管理"
                 className={blockMode ? "active warning" : ""}

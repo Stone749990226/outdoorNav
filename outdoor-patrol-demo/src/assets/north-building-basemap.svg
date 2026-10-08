@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="976" height="952" viewBox="0 0 976 952">
+  <title>杭州湾智慧谷 · 北区园区示意底图</title>
+  <desc>依据用户提供的高德地图与卫星图重绘。中央三十层主楼、东侧裙楼、屋顶花园与西南绿地为示意，沿实测环线布局；建筑投影仅表现日照阴影，不代表建筑占地或导航障碍。</desc>
+  <defs>
+    <linearGradient id="ground" x2="1" y2="1">
+      <stop stop-color="#253130"/><stop offset="1" stop-color="#202829"/>
+    </linearGradient>
+    <linearGradient id="roof" x2=".5" y2="1">
+      <stop stop-color="#58696c"/><stop offset="1" stop-color="#3e4e53"/>
+    </linearGradient>
+    <linearGradient id="lawn" x2="1" y2="1">
+      <stop stop-color="#354d40"/><stop offset="1" stop-color="#293e35"/>
+    </linearGradient>
+    <linearGradient id="shadow" x1="1" y1="1" x2="0" y2="0">
+      <stop stop-color="#10191c" stop-opacity=".38"/><stop offset="1" stop-color="#10191c" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="paving" width="26" height="26" patternUnits="userSpaceOnUse">
+      <rect width="26" height="26" fill="#3a403e"/>
+      <path d="M26 0H0V26" fill="none" stroke="#758076" stroke-opacity=".09"/>
+    </pattern>
+    <pattern id="roof-seams" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M0 0V20" stroke="#a6bdc0" stroke-opacity=".11" stroke-width="2"/>
+    </pattern>
+    <pattern id="planting" width="19" height="19" patternUnits="userSpaceOnUse">
+      <circle cx="5" cy="6" r="1" fill="#93b098" opacity=".16"/>
+    </pattern>
+    <symbol id="tree" viewBox="-18 -18 36 36">
+      <ellipse cx="3" cy="5" rx="13" ry="12" fill="#152821" opacity=".4"/>
+      <circle r="13" fill="#3c5747" stroke="#698369" stroke-opacity=".22"/>
+      <circle cx="-3" cy="-3" r="9" fill="#4a6651"/>
+      <circle cx="-5" cy="-5" r="5" fill="#769275" opacity=".2"/>
+      <path d="M-4 3L3-4M0 0L4 3" fill="none" stroke="#9eb390" stroke-opacity=".2"/>
+    </symbol>
+    <symbol id="vent" viewBox="0 0 28 18">
+      <rect x="1" y="2" width="26" height="15" rx="2" fill="#344348" stroke="#8b9a9b" stroke-opacity=".35"/>
+      <path d="M5 5H23M5 8H23M5 11H23M5 14H23" stroke="#a6b6b6" stroke-opacity=".23"/>
+    </symbol>
+  </defs>
+
+  <rect width="976" height="952" fill="url(#ground)"/>
+  <!-- Context outside the measured ring. -->
+  <path d="M0 0H976V34L854 40 689 48 419 64 221 88 0 134Z" fill="#2c4137"/>
+  <path d="M-25 98L248 30 510 4 1000-17" fill="none" stroke="#56605a" stroke-width="38" opacity=".26"/>
+  <path d="M-25 98L248 30 510 4 1000-17" fill="none" stroke="#9aab98" stroke-width="1" stroke-dasharray="16 15" opacity=".15"/>
+  <path d="M11 244L66 263 81 401 46 422 8 390Z M14 467L87 480 137 554 77 592 14 563Z" fill="#303d3c" stroke="#52645d" stroke-opacity=".3"/>
+  <path d="M375 912L535 890 828 908 849 952H391Z" fill="#34403e" stroke="#5b6c61" stroke-opacity=".25"/>
+  <path d="M397 925L535 905 811 921" fill="none" stroke="#758272" stroke-opacity=".16" stroke-width="3"/>
+
+  <!-- Broad paved areas and softened road margins are illustrative widths. -->
+  <path d="M84 161L205 141 261 120 371 105 499 104 687 93 802 86Q860 85 870 125L881 188 880 427 877 515 885 695 891 803 885 846Q883 860 873 856L802 852 762 848 699 851 647 854 612 847 579 833 537 823 505 824 463 815Q446 811 451 759L370 668 274 580 196 505 136 439 130 338 117 256Z" fill="#303a36" stroke="#526054" stroke-width="2"/>
+  <path d="M148 202L356 165 655 148 838 153 841 776 648 801 493 771 389 638 293 550 178 438Z" fill="url(#paving)"/>
+  <g fill="none" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M84 161L205 141 261 120 371 105 499 104 687 93 802 86Q860 85 870 125L881 188 880 427 877 515 885 695 891 803 885 846Q883 860 873 856L802 852 762 848 699 851 647 854 612 847 579 833 537 823 505 824 463 815Q446 811 451 759L370 668 274 580 196 505 136 439 130 338 117 256Z M161 868L183 839 232 792 260 769 319 716 344 696 370 668" stroke="#59645b" stroke-width="48" opacity=".55"/>
+    <path d="M84 161L205 141 261 120 371 105 499 104 687 93 802 86Q860 85 870 125L881 188 880 427 877 515 885 695 891 803 885 846Q883 860 873 856L802 852 762 848 699 851 647 854 612 847 579 833 537 823 505 824 463 815Q446 811 451 759L370 668 274 580 196 505 136 439 130 338 117 256Z M161 868L183 839 232 792 260 769 319 716 344 696 370 668" stroke="#3d4743" stroke-width="40"/>
+  </g>
+
+  <!-- Southwest gardens, paths and eastern tree avenue. -->
+  <path d="M39 610Q83 574 135 590L269 685 230 738 162 802 115 864 65 818Z" fill="url(#lawn)" stroke="#50684f" stroke-opacity=".45"/>
+  <path d="M219 851L286 781 355 714 414 781 413 852 342 884 254 901Z" fill="url(#lawn)"/>
+  <path d="M39 610Q83 574 135 590L269 685 230 738 162 802 115 864 65 818Z" fill="url(#planting)"/>
+  <path d="M101 829Q80 751 127 696T201 663 M127 696L68 656 M270 866Q300 814 374 797" fill="none" stroke="#7b8270" stroke-width="9" opacity=".4"/>
+  <path d="M916 131L956 120 960 848 924 868Z" fill="#304639"/>
+  <path d="M935 144V839" stroke="#91a18a" stroke-width="2" opacity=".2"/>
+  <path d="M298 521L430 522 474 568 448 617 394 618Z" fill="#334b3b" stroke="#587152" stroke-opacity=".4"/>
+  <path d="M314 531L422 533 457 569 438 600 399 600Z" fill="url(#planting)"/>
+  <g>
+    <use href="#tree" x="914" y="150" width="36" height="36"/><use href="#tree" x="916" y="198" width="34" height="34"/>
+    <use href="#tree" x="916" y="248" width="36" height="36"/><use href="#tree" x="916" y="299" width="34" height="34"/>
+    <use href="#tree" x="917" y="349" width="36" height="36"/><use href="#tree" x="917" y="400" width="35" height="35"/>
+    <use href="#tree" x="917" y="451" width="36" height="36"/><use href="#tree" x="918" y="502" width="34" height="34"/>
+    <use href="#tree" x="918" y="553" width="36" height="36"/><use href="#tree" x="919" y="604" width="35" height="35"/>
+    <use href="#tree" x="919" y="655" width="36" height="36"/><use href="#tree" x="920" y="706" width="34" height="34"/>
+    <use href="#tree" x="920" y="757" width="36" height="36"/><use href="#tree" x="920" y="808" width="34" height="34"/>
+    <use href="#tree" x="55" y="615" width="42" height="42"/><use href="#tree" x="96" y="600" width="45" height="45"/>
+    <use href="#tree" x="145" y="627" width="40" height="40"/><use href="#tree" x="195" y="669" width="35" height="35"/>
+    <use href="#tree" x="48" y="688" width="42" height="42"/><use href="#tree" x="123" y="714" width="47" height="47"/>
+    <use href="#tree" x="65" y="761" width="40" height="40"/><use href="#tree" x="141" y="771" width="36" height="36"/>
+    <use href="#tree" x="271" y="833" width="39" height="39"/><use href="#tree" x="311" y="844" width="43" height="43"/>
+    <use href="#tree" x="356" y="817" width="40" height="40"/><use href="#tree" x="328" y="775" width="35" height="35"/>
+    <use href="#tree" x="329" y="540" width="33" height="33"/><use href="#tree" x="371" y="549" width="34" height="34"/>
+    <use href="#tree" x="410" y="566" width="31" height="31"/>
+    <use href="#tree" x="336" y="48" width="30" height="30"/><use href="#tree" x="386" y="44" width="30" height="30"/>
+    <use href="#tree" x="436" y="40" width="30" height="30"/><use href="#tree" x="486" y="36" width="30" height="30"/>
+    <use href="#tree" x="536" y="32" width="30" height="30"/><use href="#tree" x="586" y="28" width="30" height="30"/>
+    <use href="#tree" x="636" y="24" width="30" height="30"/><use href="#tree" x="686" y="20" width="30" height="30"/>
+  </g>
+
+  <!-- A light northwest cast shadow, distinct from the roof footprint. -->
+  <path d="M190 250L103 66 527 25 656 222 656 457 190 457Z" fill="url(#shadow)"/>
+  <path d="M646 462L580 366 760 351 823 481 823 759 646 759Z" fill="url(#shadow)"/>
+
+  <!-- Low eastern podium with a planted roof and terrace. -->
+  <path d="M634 310H824V761H652V459H634Z" fill="#18282c" opacity=".6" transform="translate(7 9)"/>
+  <path d="M634 310H824V761H652V459H634Z" fill="#4b5551" stroke="#8c9584" stroke-opacity=".6" stroke-width="2"/>
+  <path d="M666 477H808V666H666Z" fill="#334d3c" stroke="#899379" stroke-opacity=".5" stroke-width="3"/>
+  <path d="M678 489H795V652H678Z" fill="url(#planting)"/>
+  <path d="M680 541H793V594H680Z" fill="#657565" stroke="#93a18b" stroke-opacity=".5"/>
+  <path d="M689 549H784V586H689Z" fill="#a29374" opacity=".7"/>
+  <path d="M686 553H787M686 560H787M686 567H787M686 574H787M686 581H787" stroke="#d5c8a4" stroke-opacity=".22"/>
+  <g fill="none" stroke="#a4aa97" stroke-opacity=".38" stroke-width="3">
+    <path d="M668 680H807M668 689H807M668 698H807M668 707H807"/>
+  </g>
+  <rect x="676" y="723" width="118" height="24" rx="2" fill="#6d7060" stroke="#aaa88d" stroke-opacity=".4"/>
+  <path d="M706 725V745M735 725V745M765 725V745" stroke="#b5b49d" stroke-opacity=".25"/>
+  <rect x="729" y="334" width="72" height="102" rx="5" fill="#364c3e" stroke="#71816a" stroke-opacity=".4"/>
+  <circle cx="765" cy="367" r="23" fill="#76796b" stroke="#b3b19a" stroke-opacity=".3" stroke-width="4"/>
+  <circle cx="765" cy="367" r="14" fill="#475e53"/>
+  <path d="M751 402H780M751 412H780M751 422H780" stroke="#a19c7e" stroke-width="5" opacity=".6"/>
+  <use href="#tree" x="673" y="492" width="29" height="29"/><use href="#tree" x="765" y="492" width="29" height="29"/>
+  <use href="#tree" x="674" y="616" width="29" height="29"/><use href="#tree" x="765" y="616" width="29" height="29"/>
+
+  <!-- Main tower: orthographic roof, parapet, skylight and equipment. -->
+  <rect x="192" y="237" width="494" height="254" rx="5" fill="#111f23" opacity=".6"/>
+  <rect x="183" y="226" width="494" height="254" rx="4" fill="#35454b" stroke="#879b9c" stroke-opacity=".65" stroke-width="2"/>
+  <rect x="193" y="236" width="474" height="232" rx="2" fill="url(#roof)" stroke="#9cb0af" stroke-opacity=".5"/>
+  <rect x="205" y="248" width="450" height="208" fill="url(#roof-seams)"/>
+  <path d="M193 468H667M677 237V470" stroke="#bcc9c1" stroke-opacity=".28" stroke-width="3"/>
+  <rect x="221" y="261" width="180" height="36" rx="2" fill="#32484f" stroke="#a2bfc1" stroke-opacity=".35"/>
+  <path d="M244 262V296M267 262V296M290 262V296M313 262V296M336 262V296M359 262V296M382 262V296" stroke="#94b4b9" stroke-opacity=".4"/>
+  <use href="#vent" x="538" y="262" width="28" height="18"/><use href="#vent" x="576" y="262" width="28" height="18"/>
+  <use href="#vent" x="538" y="288" width="28" height="18"/><use href="#vent" x="576" y="288" width="28" height="18"/>
+  <rect x="271" y="332" width="319" height="85" rx="3" fill="#495a5e" stroke="#8fa4a4" stroke-opacity=".35"/>
+  <path d="M285 343H575" stroke="#a4b6b1" stroke-opacity=".25"/>
+  <path d="M343 480V494H516V480" fill="#6d786e" stroke="#a5af99" stroke-opacity=".35"/>
+  <path d="M358 501H501M364 508H494" stroke="#93977f" stroke-opacity=".5" stroke-width="2"/>
+
+  <!-- Small plaza details. -->
+  <path d="M499 537H611V719H503L466 669 493 627Z" fill="#464c43" stroke="#7c806a" stroke-opacity=".2"/>
+  <path d="M514 552H596M514 565H596M514 693H596" stroke="#959780" stroke-opacity=".18"/>
+  <rect x="518" y="580" width="12" height="67" rx="3" fill="#526950"/><rect x="578" y="580" width="12" height="67" rx="3" fill="#526950"/>
+  <path d="M535 586V611M573 616V641" stroke="#b29b76" stroke-opacity=".5" stroke-width="4"/>
+  <g fill="#a0ad98" opacity=".35">
+    <circle cx="178" cy="192" r="2"/><circle cx="295" cy="166" r="2"/><circle cx="425" cy="151" r="2"/>
+    <circle cx="558" cy="143" r="2"/><circle cx="697" cy="139" r="2"/><circle cx="821" cy="165" r="2"/>
+  </g>
+
+  <g font-family="'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif" text-anchor="middle">
+    <text x="430" y="376" fill="#cfdbd4" font-size="24" letter-spacing="4">智慧谷 · 主楼</text>
+    <text x="430" y="399" fill="#a6b9b5" font-size="12" letter-spacing="3">30F / 北区</text>
+    <text x="738" y="465" fill="#b2bdac" font-size="17" letter-spacing="3">东侧裙楼</text>
+    <text x="738" y="638" fill="#9aac90" font-size="12" letter-spacing="2">屋顶花园</text>
+    <text x="553" y="675" fill="#a6ad98" font-size="14" letter-spacing="3">楼前广场</text>
+    <text x="161" y="690" fill="#a0b394" font-size="14" letter-spacing="3">园区绿地</text>
+    <text x="413" y="195" fill="#8d9c8f" font-size="13" letter-spacing="5">北 侧 环 路</text>
+    <text x="757" y="810" fill="#8d9c8f" font-size="13" letter-spacing="5">南 侧 环 路</text>
+    <text x="729" y="924" fill="#80968a" font-size="12" letter-spacing="2">杭州湾智慧谷 / 园区示意</text>
+  </g>
+</svg>
