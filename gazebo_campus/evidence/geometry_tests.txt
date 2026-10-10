@@ -1,0 +1,11 @@
+test_all_continuous_trajectories_have_required_clearance (test_scene.SceneTests.test_all_continuous_trajectories_have_required_clearance) ... ok
+test_gazebo_obstacle_footprints_match_map (test_scene.SceneTests.test_gazebo_obstacle_footprints_match_map) ... ok
+test_generation_rejects_unplaceable_obstacle (test_scene.SceneTests.test_generation_rejects_unplaceable_obstacle) ... ok
+test_plaza_requires_actual_obstacle_detour (test_scene.SceneTests.test_plaza_requires_actual_obstacle_detour) ... ok
+test_raster_is_conservative_and_preserves_trace_corridor (test_scene.SceneTests.test_raster_is_conservative_and_preserves_trace_corridor) ... ok
+test_road_mesh_keeps_courtyard_holes (test_scene.SceneTests.test_road_mesh_keeps_courtyard_holes) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 122.010s
+
+OK

@@ -1,0 +1,24 @@
+{
+  "scene_version": "campus-06b547b8ec03",
+  "passed": true,
+  "laser_messages": 545,
+  "scans_with_returns": 545,
+  "cases": [
+    {
+      "name": "plaza_diagonal",
+      "expected_success": true,
+      "max_command_m_s": 0.45000000000000007,
+      "status": "succeeded",
+      "elapsed_wall_s": 51.66,
+      "goal_error_m": 0.2922607178993773,
+      "laser_messages": 516,
+      "passed_status": true,
+      "min_boundary_clearance_m": 1.0829583000072582,
+      "max_distance_from_original_centerline_m": 26.02272062815684,
+      "collision_events": 0,
+      "passed": true,
+      "direct_line_blocked": true,
+      "actual_path_avoids_planter": true
+    }
+  ]
+}

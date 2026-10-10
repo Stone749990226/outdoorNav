@@ -1,0 +1,26 @@
+{
+  "name": "north_campus",
+  "resolution": 0.1,
+  "robot_radius": 0.5,
+  "trace_margin": 0.35,
+  "road_widths": {"loop-a": 6.0, "loop-b": 8.0, "branch": 4.0, "raw_approach": 4.0},
+  "buildings": [
+    {"name": "main_tower", "bounds": [11.875, -40.0, 73.625, -8.25], "height": 90.0, "color": "0.32 0.46 0.53 1"},
+    {"name": "east_podium", "bounds": [70.5, -75.125, 92.0, -18.75], "height": 12.0, "color": "0.65 0.69 0.64 1"}
+  ],
+  "plaza": [[36.5, -45.0], [68.5, -45.0], [68.5, -85.0], [49.0, -85.0], [36.5, -69.0]],
+  "obstacles": [
+    {"name": "plaza_planter", "bounds": [54.0, -66.0, 58.0, -60.0], "height": 0.65, "color": "0.46 0.52 0.34 1"},
+    {"name": "plaza_planter_north", "bounds": [43.0, -51.0, 47.5, -48.0], "height": 0.65, "color": "0.46 0.52 0.34 1"},
+    {"name": "bench_east", "bounds": [65.0, -59.0, 65.65, -56.5], "height": 0.65, "color": "0.48 0.28 0.12 1"},
+    {"name": "bench_south", "bounds": [61.0, -79.0, 64.0, -78.35], "height": 0.65, "color": "0.48 0.28 0.12 1"}
+  ],
+  "tasks": [
+    {"name": "ring", "start": [-0.4423736455, -0.1509171852, -1.24], "goal": [4.8340816056, -17.8298054922, -1.3]},
+    {"name": "branch_to_ring", "start": [27.0, -72.0, 0.8], "goal": [39.0, -68.0, -0.8]},
+    {"name": "road_to_plaza", "start": [35.2605812902, -63.4678035545, 0.0], "goal": [49.0, -57.0, 0.3]},
+    {"name": "plaza_diagonal", "start": [49.0, -70.0, 0.7], "goal": [63.0, -55.0, 0.7]},
+    {"name": "building_rejected", "start": [49.0, -70.0, 0.0], "goal": [40.0, -25.0, 0.0], "expect_success": false},
+    {"name": "outside_rejected", "start": [49.0, -70.0, 0.0], "goal": [-18.0, -55.0, 0.0], "expect_success": false}
+  ]
+}

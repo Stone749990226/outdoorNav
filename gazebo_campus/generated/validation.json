@@ -1,0 +1,69 @@
+{
+  "survey_version": "survey-388df4ebbef8",
+  "scene_version": "campus-06b547b8ec03",
+  "required_clearance_m": 0.85,
+  "map_resolution_m": 0.1,
+  "free_area_m2": 3675.401362069296,
+  "adjusted_obstacles": [
+    {
+      "name": "main_tower",
+      "original_bounds": [
+        11.875,
+        -40.0,
+        73.625,
+        -8.25
+      ],
+      "bounds": [
+        12.125,
+        -39.75,
+        73.375,
+        -8.5
+      ]
+    }
+  ],
+  "assumptions": "Flat simulation; building shapes/heights and widths are illustrative; ideal localization.",
+  "traces": {
+    "raw/1.ubx/0": {
+      "length_m": 358.6048420031223,
+      "coverage_fraction": 1.0000000000000002,
+      "min_boundary_clearance_m": 1.2428392470836318,
+      "protected_area_covered": true
+    },
+    "raw/2.ubx/0": {
+      "length_m": 36.35896597179769,
+      "coverage_fraction": 1.0000000000000013,
+      "min_boundary_clearance_m": 1.9906455469522972,
+      "protected_area_covered": true
+    },
+    "filtered/1.ubx/0": {
+      "length_m": 356.445326617618,
+      "coverage_fraction": 0.9999999999999997,
+      "min_boundary_clearance_m": 1.249505992875952,
+      "protected_area_covered": true
+    },
+    "filtered/2.ubx/0": {
+      "length_m": 33.35044573151228,
+      "coverage_fraction": 1.0,
+      "min_boundary_clearance_m": 1.9995797584727364,
+      "protected_area_covered": true
+    },
+    "network/loop-a": {
+      "length_m": 76.62736070550466,
+      "coverage_fraction": 1.0,
+      "min_boundary_clearance_m": 1.161304076266598,
+      "protected_area_covered": true
+    },
+    "network/loop-b": {
+      "length_m": 268.71728054934454,
+      "coverage_fraction": 1.0,
+      "min_boundary_clearance_m": 3.981667633462806,
+      "protected_area_covered": true
+    },
+    "network/branch": {
+      "length_m": 36.2651682783761,
+      "coverage_fraction": 1.0,
+      "min_boundary_clearance_m": 1.999999999999992,
+      "protected_area_covered": true
+    }
+  }
+}

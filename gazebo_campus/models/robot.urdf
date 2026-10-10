@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<robot name="campus_robot">
+  <material name="blue"><color rgba="0.05 0.45 0.65 1"/></material>
+  <material name="black"><color rgba="0.08 0.08 0.08 1"/></material>
+  <link name="base_link"><visual><geometry><box size="0.65 0.45 0.22"/></geometry><material name="blue"/></visual></link>
+  <link name="laser"><visual><geometry><cylinder radius="0.055" length="0.08"/></geometry><material name="black"/></visual></link>
+  <joint name="laser_fixed" type="fixed"><parent link="base_link"/><child link="laser"/><origin xyz="0.1 0 0.18"/></joint>
+  <link name="left_wheel"><visual><origin rpy="1.57079632679 0 0"/><geometry><cylinder radius="0.12" length="0.07"/></geometry><material name="black"/></visual></link>
+  <joint name="left_display" type="fixed"><parent link="base_link"/><child link="left_wheel"/><origin xyz="0 0.29 -0.10"/></joint>
+  <link name="right_wheel"><visual><origin rpy="1.57079632679 0 0"/><geometry><cylinder radius="0.12" length="0.07"/></geometry><material name="black"/></visual></link>
+  <joint name="right_display" type="fixed"><parent link="base_link"/><child link="right_wheel"/><origin xyz="0 -0.29 -0.10"/></joint>
+</robot>
