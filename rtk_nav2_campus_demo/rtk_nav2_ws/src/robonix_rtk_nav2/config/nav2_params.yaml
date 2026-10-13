@@ -1,0 +1,440 @@
+# nav2 两图 + 规划器参数（第三阶段的主角，验收按这份核对）
+#
+# 口径来源：docs/rtk-nav2-brief.md §2/§3/§10。三条容易踩的默认值，都在这里显式改掉：
+#   ① `obstacle_max_range` / `raytrace_max_range` 的 nav2 默认值是 **2.5 / 3.0**，
+#      会把相机（有效量程 6 m）砍到 2.5 m —— 1.9~4.9 m 处的隔墙/立柱/独立墙段都进不了图、
+#      走过的区域也长不出来。两张图都显式设成 6.0（brief §10 裁定 4）。
+#      （这条原来举的例子是"外墙 2.3~4.9 m"，**外墙已于 2026-09-21 整段删除**，
+#       量程取 6.0 的理由不变：相机有效量程就是 6 m，而场内最近的障碍在 1.9 m 外。）
+#   ② `min_obstacle_height` / `max_obstacle_height` 是**地图帧下的绝对高度**（不是相对机器人）。
+#      `max` 取第一阶段实测标定的 Z_OBSTACLE_MAX=1.2 不变。
+#      **`min` 2026-09-21 由 0.12 抬到 0.30**，依据是本轮实测（不是拍脑袋）：
+#        · 场里**所有真实障碍都是 1.0 m 高**（中央方块/隔墙/立柱/4 段独立墙/验收用的临时障碍），
+#          0.30 m 对它们毫无影响——表面、顶面全都照常进图（复验：lethal 全部 ≤0.15 m 落在
+#          真实表面上，`route_near` 空闲比 0）。
+#        · 而"假障碍"实测最高只到 **0.16 m**：相机在"地面/虚空"轮廓线上会吐出**上飘像素**
+#          （轮廓线以上几行返回的却是下面地面的深度），反投影到地面上方
+#          0.12~0.16 m。三次独立测量：`ghost_watch.py` 抓到 u=74,v=122 深度 5.15 m → z=0.153、
+#          u=256,v=123 深度 4.709 m → z=0.139（artifacts/rtk-nav2/nav5-nowall）；
+#          `camera_ground_probe.py` 在 nav6-fix 上抓到一波 332 个点，
+#          `phantom_z_max=0.16`、`phantom_z_p50=0.133`（artifacts/rtk-nav2/nav6-fix/nav2/probe.jsonl）。
+#        0.30 比实测最高值还高 0.14 m（近 2 倍余量），又不碰 1.0 m 的真实障碍。
+#        · **代价（如实记）**：这个口径下**看不见矮于 0.30 m 的障碍**。本场景没有这种障碍，
+#          演示验收也不涉及；但换场景必须重新评估，不能直接沿用。
+#      （原来 0.12 是第一阶段用 depth_z_probe 标出来的 Z_FLOOR：当时测到近处地面点反投影
+#        高度约 0.078 m，取 0.12 让地面落回自由空间。0.12 只比地面高 0.13 m，
+#        轮廓线上飘几个像素就越过去了——这就是幽灵格能进图的原因。
+#        **注意"哪条轮廓线"当时认定是方板板边，那个落点判断已被 ablation 反证（见下）——
+#        但"存在 0.12~0.16 m 的上飘像素、0.12 拦不住"这条实测事实仍然成立。**）
+#
+#      **2026-09-21 的 ablation：0.30 不是"多余的保险"，它才是真正起作用的那一道。**
+#      reviewer 的疑问是"板已经铺到 22.70 m，边界早就丢出量程了，0.30 还有必要吗"。
+#      （顺带：本文件开头这段写于 ablation 之前，里面"0.30 比实测最高值还高 0.14 m"之类
+#        是**当时的依据**；ablation 之后的主依据是下面这段实测。板本身该铺多大是**另一件事**，
+#        正经理由见 `make_world.py` 的 `GROUND_MARGIN` 注释与 `docs/rtk-nav2.md` §8.2。）
+#      做法：只把四处 `min_obstacle_height` 改回 **0.12**（世界不动），起栈（run-id `nav9-ab012`，
+#      `config_rtk_courtyard.sdf=c616275d20af10aa`（**当时那一版的世界**，与当前版只差头注释）、
+#      `config_nav2_params.yaml=8773d0c2f0b120f0`），
+#      沿 ±2.6 方环走满四条边（每段到达都有记录，见 `artifacts/rtk-nav2/nav9-ab012/ablation-legs.txt`），
+#      在**跑着的栈**上量：
+#        · 旧外墙带里的致命格 **75**（0.30 时 0~3）
+#        · "离任何真实障碍 > 0.35 m 的致命格" **412**、最远 **3.057 m**（0.30 时 0）
+#        · `within_ratio` **0.7545**（0.30 时 0.9333~1.0）
+#        · `ghost_watch.py` 在行驶中**当场抓到**一帧新增 225 个幽灵格
+#      → **回退到 0.12 幽灵格照样出，而且不比旧世界少**。
+#      按 reviewer **事先给定**的口径（"不出现才回退 0.12"），判定为**保留 0.30**。
+#      **截至 2026-09-21 本文件的取值是 0.30；最终去留以 reviewer/AuYang 的裁定为准。**
+#      也就是说"把板铺大"并没有把泄漏源去掉（幽灵格仍落在原板边那一带，而那时板边已在
+#      6 m 量程之外）——**板尺寸与实际生效的阈值是两件事**，别把前者的复验数字当成后者的；
+#      幽灵的具体来源**仍未定**。
+#      代价与口径因此**照实写成能力取舍**：**低于 0.30 m 的障碍不进图**
+#      （第二阶段那条盲区线是"低于约 0.10 m"，0.30 把它抬到 0.3 m；
+#       本场景所有真实障碍都是 1.0 m，无影响，**换场景必须重评**）。
+#
+#      **第五阶段（2026-09-21）对上面这条做了拆分，两处值不再相同，别按"两处取同值"读**：
+#        · **相机源**的 `min_obstacle_height` 仍是 **0.30**（AuYang 定，一个字没动）
+#          —— 它靠 **ObservationBuffer 的丢弃**生效（实测见 obstacle_layer 段）；
+#        · **层级**的 `min_obstacle_height` 改成 **0.02** —— 它是 marking 循环里
+#          对所有源生效的**第二道门**，不改的话低装激光（扫描面 z≈0.11 m）
+#          一个点都标不进图，"加激光探低矮障碍"这件事就等于没做。
+#        两道门的机制、离线探针实测（相机源只留 z≥0.30 的点）与
+#        "为什么放低层阈值不会让幽灵格回来"都写在 `obstacle_layer` 那一段里。
+#      **第五阶段新增的激光也带两条边界，一起写在这里**：
+#        · **低于扫描面（离地 0.11 m）的障碍看不见**——单层水平扫描，只有扫到那一层的
+#          障碍才算；要更低就把扫描面压低并**重测探测下限**；
+#        · **7.5~8.0 m 的真实障碍只清不标**（见 `scan` 源那段对 `obstacle_max_range`
+#          取 7.5 的依据）。
+#   ③ `combination_method` 是**层参数**（配在 obstacle_layer / voxel_layer 上，不在
+#      observation_sources 条目里）——见 brief §10 裁定 3。全局图取 0（Overwrite，AuYang 定）。
+#
+# 全局图不挂 static_layer：从零累积（brief §1）。局部图挂 base_link（AuYang 定），
+# 是**旋转帧**——nav2 的滚动窗口只搬原点、不旋转已有格内容，回旋余量见 brief §4。
+#
+# 2026-09-20 实测复核（见 docs/rtk-nav2-validation.md）：nav2 的
+#   `obstacle_layer.cpp::updateBounds()` 确实是**先 raytraceFreespace（清射线）后 marking 循环**，
+#   且 `updateWithOverwrite()` 里 `if (costmap_[index] == NO_INFORMATION) continue;`
+#   ——未观测格不会被 Overwrite 写成空闲。这正是第二阶段 §0d 那个 bug 的正确写法，
+#   本条作为回归判据保留（判据 1 的第二半）。
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: true
+      update_frequency: 2.0
+      publish_frequency: 2.0
+
+      global_frame: map
+      robot_base_frame: base_footprint
+      transform_tolerance: 1.0
+
+      # 栅格：固定 40 x 40 m、0.05 m/格，**以 RTK 基准点为中心**。
+      # 绝对定位把 map 帧原点放在 RTK 基准点上，所以中心 = (0,0) -> origin = (-20,-20)。
+      # rolling_window=false 时 nav2 不再搬原点（搬原点的逻辑在 LayeredCostmap::updateMap，
+      # 由 rolling_window_ 把关），origin 只在 resizeMap 时按这里的 origin_x/origin_y 设定。
+      resolution: 0.05
+      # **width/height 是整数参数**（nav2 声明成 ParameterValue(5)）：写成 40.0 会在
+      # "Creating Costmap" 那一刻抛 InvalidParameterTypeException，把承载它的进程直接打崩
+      # （实测：planner_server 崩掉后 lifecycle_manager 会一直等它的 get_state 服务，
+      #  日志里看起来只是"卡住"，很容易误判成启动慢）。单位是米，不是格数。
+      width: 40
+      height: 40
+      origin_x: -20.0
+      origin_y: -20.0
+      rolling_window: false
+
+      # 与 Overwrite 配对（brief §2）：没观测过的格子保持 NO_INFORMATION，
+      # Overwrite 才不会把"从没去过的地方"写成可通行。
+      track_unknown_space: true
+
+      # 每个周期发全图：覆盖增长曲线（判据 3）与地图更新频率（判据 7）都靠它取数。
+      always_send_full_costmap: true
+
+      # 底盘内切半径（TurtleBot3 burger）。inflation 的 inscribed 半径由它给。
+      robot_radius: 0.105
+
+      plugins: ["obstacle_layer", "inflation_layer"]
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        # Overwrite（AuYang 定）：以最新观测为准，障碍移走后能被清掉。
+        # 0=Overwrite / 1=Maximum / 其它=不更新（nav2 obstacle_layer.cpp 的 switch）。
+        combination_method: 0
+        # **层级 min/max_obstacle_height：第五阶段把 min 由 0.30 改成 0.02（有实测依据，见下）**
+        #
+        # 为什么必须改（否则本阶段的任务 2 直接失效）：
+        #   nav2 的**层级**这一对是 marking 循环里的**逐点 z 带过滤**
+        #   （反汇编 `ObstacleLayer::updateBounds`：`if (层min > z || 层max < z) skip`，
+        #    读的是层对象自己的两个 double 成员）——它**对所有源一视同仁**，
+        #   与源级那一对（喂给 ObservationBuffer 的）是**两道独立的门**。
+        #   低装激光的扫描面在**地图帧 z≈0.11 m**，若层 min 还是 0.30，
+        #   **激光的点一条都进不了 marking**——它只能清除、永远标不出低矮障碍，
+        #   而"探低矮障碍"正是加这台激光的全部理由（brief §1.2）。
+        # **nav2 的高度过滤是"两层门"，不对称——别把这两处参数当成"取同值才生效"**：
+        #   第 1 层（**源级**，各源不同）：`ObservationBuffer::bufferCloud()` 把点云变换到
+        #     地图帧后，**按该源自己的 min/max_obstacle_height 逐点过滤并丢弃**——
+        #     被丢的点**既不标记也不清除**（射线清除里也不存在）。
+        #     离线探针实测（喂 z = {-0.013, 0, 0.05, 0.11, 0.19, 0.30, 0.90}）：
+        #       相机源(0.30/1.2) → **只留 0.300 与 0.900**；
+        #       激光源(0.02/1.2) → 留 0.050 / 0.110 / 0.190 / 0.300 / 0.900；
+        #       下限对照(0.12/1.2) → 留 0.190 / 0.300 / 0.900。
+        #   第 2 层（**层级**，所有源一视同仁）：`ObstacleLayer::updateBounds()` 的
+        #     **marking 循环**里还有一道 `if (z < min || z > max) continue;`
+        #     （反汇编：读层对象自己那两个 double 成员，紧凑搬运跳过带外的点）——
+        #     **被它挡住的点只是不标记，射线清除仍然照走**。
+        # 为什么对相机是安全的（**相机源一个字没动**）：z<0.30 的相机点在第 1 层
+        #   **就已经被丢掉了，根本到不了第 2 层**，所以层 min 放到 0.02 不会把
+        #   0.12~0.16 m 的上飘像素放回来（离线 T3 也实测：z=0.10/0.25 的点不标记、
+        #   0.50/0.90 标记）。实测判据仍是第三阶段的幽灵格核对。
+        # 为什么**必须**改层 min：激光扫描面在 map 帧 z=0.11，若第 2 层还是 0.30，
+        #   激光的点会被 marking 全挡掉（只能清、不能标），"加激光探低矮障碍"就等于没做。
+        min_obstacle_height: 0.02
+        max_obstacle_height: 1.2
+        # **两条源各管各的**（brief §1.2）：相机管 0.30 m 以上（顺带把幽灵格挡住），
+        # 激光管 0.02 m 以上（低矮障碍）。这正是"加激光"能替代"把相机阈值降到 0.12"的原因。
+        observation_sources: camera_cloud scan
+        camera_cloud:
+          topic: /rtk/camera/points
+          data_type: "PointCloud2"
+          marking: true
+          clearing: true
+          # 裁定 4：显式覆盖默认 2.5/3.0，覆盖相机有效量程 6 m。
+          obstacle_max_range: 6.0
+          obstacle_min_range: 0.0
+          raytrace_max_range: 6.0
+          raytrace_min_range: 0.0
+          # 源级的 min/max_obstacle_height 是喂给 ObservationBuffer 的那一份
+          # （**它是"丢弃点"的那一道门**，实测见上）。第五阶段**没有动它**。
+          min_obstacle_height: 0.30
+          max_obstacle_height: 1.2
+        # ---- 第五阶段新增：低装 360° 激光（专管低矮障碍，brief §1.2）----
+        #
+        # ★★ 2026-09-21 改动（本轮：**把激光的入口换成与相机同一种**）★★
+        #   只有两行配置变了：上面的 `observation_sources` **没动**（源名仍叫 `scan`）、
+        #   下面的 ranges / 高度门 / marking / clearing **一个字没动**：
+        #       topic:     /rtk/scan        --> /rtk/scan_points
+        #       data_type: "LaserScan"      --> "PointCloud2"
+        #   转换由自写节点 `scan_points.py`（launch 里的 `scan_points`）完成，
+        #   它调的就是 nav2 内部同一个 `laser_geometry::LaserProjection`，几何逐点一致。
+        #   **`/rtk/scan` 话题原样保留**（桥接没动）：换的是"nav2 从哪取"，不是"有没有数据"。
+        #   ⚠️ 下面那段 `inf_is_valid` 的长注释是**改前**写的，现在**已失效**：
+        #       · `inf_is_valid` 是 **LaserScan 源专有**的键，PointCloud2 源不读它
+        #         ⇒ 它现在是个**惰性键**（留着是为了让本轮 diff 只有上面那两行）；
+        #       · 它原来承担的那件事（"无回波 ⇒ 有端点 ⇒ 清成空闲"）现在由
+        #         `scan_points.py` 的 `emit_far_points` 承担，替换值 7.9999 与
+        #         nav2 自己的 `range_max - 1e-4` **逐位相同** ⇒ 行为等价。
+        #       · **但那段注释里"7.5 而不是 8.0"的实测依据仍然有效**，且是本次替换值
+        #         取 7.9999 的**同一条前提**（远点必须落在标记量程之外）——别删。
+        scan:
+          topic: /rtk/scan_points
+          data_type: "PointCloud2"
+          marking: true
+          clearing: true
+          # **`inf_is_valid: true` 让激光天然满足任务 1.1**：无回波（inf）的束由
+          # nav2 的 `laserScanValidInfCallback` 替换成 `range_max - 1e-4`
+          # （反汇编读出的常量 0x38D1B717 = 1e-4）再投影，于是那些方向**有端点**，
+          # 射线把沿途清成空闲（清到 `raytrace_max_range`）。
+          # ⚠️ 顺带一条实测：laser_geometry **会丢掉 `r >= range_max` 的束**，
+          #    所以"无回波束能变成端点"完全依赖 nav2 这一步替换（直接喂 inf 投影出 0 个点）。
+          inf_is_valid: true
+          # **obstacle_max_range 取 7.5 而不是 8.0（对 brief 的偏离，有实测依据）**：
+          #   brief §1.2 写的是 `obstacle_max_range = raytrace_max_range = 8.0`。
+          #   但 nav2 把无回波束放在 **7.9999 m**（= range_max-1e-4），而 marking 的判据是
+          #   **严格小于**（反汇编：`if (sq_obstacle_max_range <= sq_dist) skip`）。
+          #   实测（离线探针，360 束全为无回波）：`obstacle_max_range = 8.0` 时
+          #   **360/360 束都会被标成致命障碍**（sq_dist = 63.9984 < 64）→
+          #   开阔方向会长出一圈**假墙**（判据 ③"幽灵格不回来"会不通过）；
+          #   取 7.5 则 **0/360** 被标，而 5 m 处的真实回波仍是 360/360 被标 ✓，
+          #   清除范围不受影响（仍是 `raytrace_max_range = 8.0`）。
+          #   **代价（如实记，进已知限制）**：**7.5~8.0 m 的真实障碍只清不标**。
+          #   本场景实测 360 束里**最大有限回波 7.228 m（< 7.5 m）**，即所有真实障碍
+          #   的实测回波都在 7.5 m 以内，所以这一档没有实际影响。
+          obstacle_max_range: 7.5
+          obstacle_min_range: 0.0
+          raytrace_max_range: 8.0
+          raytrace_min_range: 0.0
+          # 源级阈值：0.02 = brief §1.2 的值，与层级的 0.02 一致。
+          # 注意**不是**把相机那套 0.30 抄过来：扫描面本身就在 0.11 m，
+          # 阈值高于 0.11 会让这台传感器一个点都用不上。
+          min_obstacle_height: 0.02
+          max_obstacle_height: 1.2
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: true
+        # 膨胀半径 0.25 m 沿用第一阶段的依据（底盘内切 0.105 + 安全余量 0.15）。
+        inflation_radius: 0.25
+        # nav2 用指数衰减：cost = 253 * exp(-factor * (d - inscribed))。
+        # 取 3.0（nav2 常用值）。**注意**：这与第二阶段自写膨胀的**线性**衰减不是同一条曲线，
+        # 所以"代价 >= 阈值"对应的实际离障距离会变——实测停车距离见验证文档，
+        # 不与第一阶段的 0.60 m 强行凑数（凑数要改 cost_scaling_factor 到 36，那是为了让数字好看而扭曲参数）。
+        cost_scaling_factor: 3.0
+        # 未知格不膨胀：未知的含义是"没看到"，把它膨胀成危险会让机器人一步都动不了。
+        inflate_unknown: false
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: true
+      # 局部图是"相对机器人的即时障碍"，跟随相机 10 Hz 出图，取 5 Hz 更新/发布。
+      update_frequency: 5.0
+      publish_frequency: 5.0
+
+      # ★ 2026-09-22 由 `base_link` 改为 `odom`（AuYang 拍板）。**两边理由都留着，别只留新的。**
+      # 原来挂 base_link 的理由：**绕开腿式里程计不可信**（原注释原文）—— 图框=车体，
+      #   机器人永远在图的中心、朝向永远沿 +x。
+      # 为什么改掉：**图框是车体 ⇒ 车转向时旧格内容不跟着转**（nav2 滚动窗只平移原点、不旋转旧格），
+      #   旧格滞留在已看不到的方向 ⇒ **原地转一圈会在局部图上围出一个闭环**（现场截图可见 ✗）。
+      #   验证文档判据 8 量到过"视场外占据格 +12%"；同文档另有一句"逐格 diff 在 base_link 帧上不成立"。
+      # 换到 odom 的代价（**这是取舍，不是纯修** ✗）：**局部图改随里程计走** ⇒
+      #   ① 短窗内 odom 的漂移会进图（`ekf_local` 的 odom→base_footprint 质量就是要绕开的那件事）；
+      #   ② 好处是 `map→odom` 被 RTK 修正跳变时，**局部图内容不跟着跳**（对控制通常正是要的）。
+      # 未实测即改（按结构性推断 + AuYang 拍板）；改完的验收 = 原地转一圈不再拉圈 + 给目标点仍能走 ✓。
+      global_frame: odom
+      robot_base_frame: base_footprint
+      transform_tolerance: 0.5
+
+      resolution: 0.05
+      # 窗口 8 m 沿用第一阶段（相机有效量程 6 m，够用），比危险判据的 3 m 视距宽得多。
+      # width/height 同样是**整数**（见全局图那处的说明）。
+      width: 8
+      height: 8
+      rolling_window: true
+
+      # 局部图不跟踪未知：nav2 局部图的常规取法。危险判据只看"代价 >= 阈值"的格子，
+      # 未知/空闲都不会被判成危险，语义与第一阶段的"未知不算危险"一致。
+      track_unknown_space: false
+      always_send_full_costmap: true
+      # 局部图**不开** trinary：危险判据要读膨胀梯度（0..100），
+      # trinary 会把发布出来的图压成 0/100/-1 三值，梯度就没了。
+      trinary_costmap: false
+      robot_radius: 0.105
+
+      # **局部图用 2D `obstacle_layer`，不用 `voxel_layer`**（brief §11 口径修订 1，reviewer 复验后改）。
+      #
+      # 为什么改：同一套脚本实测，`obstacle_layer` + Overwrite 的**全局图高低障碍都能清**
+      # （矮 9→0、高 8→0），而 `voxel_layer` 的局部图**高障碍永远清不掉**（矮 0.25 m 能清、高 1.0 m 不能）。
+      # 根因是 nav2 自身行为：射线清除沿新射线**逐体素**清，而**高障碍的上部体素不在任何后续射线的
+      # z 路径上**；`mark_threshold=0` 又让"该列还剩任一标记体素"就不把 2D 格判 free，体素层也没有衰减。
+      # 换成 2D 层后语义与全局图一致，也就不用再解释"两张图组合方式不同"。
+      #
+      # 参数与全局图**逐项对齐**（brief §11）：combination_method 0、相机源 ranges 6.0、
+      # **层级高度 min/max = 0.02 / 1.2**（与全局图同值；0.30→0.02 的理由、两道门的
+      # 机制与实测都在全局图那一段，这里不重复）、新增的 `scan` 源逐项同值。
+      # ⚠️ 这行原来写的是"高度 0.12/1.2"——**是过时注释**：2026-09-21 实测把两处
+      # `min_obstacle_height` 一起由 0.12 抬到 0.30（"逐项对齐"才成立，只改一处会变成
+      # "注释说一套、值写另一套"，本项目为这种不一致反复吃过亏）；第五阶段又一起改成 0.02。
+      plugins: ["obstacle_layer", "inflation_layer"]
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        combination_method: 0
+        # 层级的 min/max：0.02/1.2（理由见全局图那一段）
+        min_obstacle_height: 0.02
+        max_obstacle_height: 1.2
+        observation_sources: camera_cloud scan
+        camera_cloud:
+          topic: /rtk/camera/points
+          data_type: "PointCloud2"
+          marking: true
+          clearing: true
+          obstacle_max_range: 6.0
+          obstacle_min_range: 0.0
+          raytrace_max_range: 6.0
+          raytrace_min_range: 0.0
+          min_obstacle_height: 0.30
+          max_obstacle_height: 1.2
+        # 低装激光（第五阶段）：与全局图逐项同值。
+        # 局部窗口只有 8x8 m（±4 m），所以 7.5/8.0 这组范围在局部图上都够不到边界；
+        # 取同值是为了"两张图逐项对齐"这条规矩，不是为了局部图本身的需要。
+        # ★ 2026-09-21（本轮）：与全局图**同步**换入口 —— 同样只改 topic 与 data_type 两行，
+        #   同样保留源名 `scan`、保留其余全部取值与那个已失效的 `inf_is_valid`。
+        #   **两张图必须一起换**：只换一张会变成"两张图的激光入口不同"，
+        #   本轮判据④（两张图分列）就失去可比性。
+        scan:
+          topic: /rtk/scan_points
+          data_type: "PointCloud2"
+          marking: true
+          clearing: true
+          inf_is_valid: true
+          obstacle_max_range: 7.5
+          obstacle_min_range: 0.0
+          raytrace_max_range: 8.0
+          raytrace_min_range: 0.0
+          min_obstacle_height: 0.02
+          max_obstacle_height: 1.2
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: true
+        inflation_radius: 0.25
+        cost_scaling_factor: 3.0
+        inflate_unknown: false
+
+# ============================================================ 第四步新增：控制器接管
+#
+# `controller_server`（nav2 原生）接管控制，**并承载 `local_costmap`**——
+# 第三阶段自写的 `local_costmap_host` 随之退役（代码保留，launch 里默认不起）。
+# 上面的 `local_costmap: local_costmap:` 参数段**原样不动**：那本来就是 nav2 惯例布局
+# （Costmap2DROS 的节点全限定名就是 `/local_costmap/local_costmap`），换宿主不用改结构。
+controller_server:
+  ros__parameters:
+    use_sim_time: true
+    controller_frequency: 10.0
+    # 速度阈值：0.16 m/s 的车，这些阈值必须很小，否则零速附近会被当成"没有速度指令"
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.001
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.3
+
+    # ---- 坑（reviewer 开工前点出）：`odom_topic` 默认 `/odom`，本系统里没有这个话题 ----
+    # 本项目的里程计是 `wheel_odom_bridge → ekf_local`，发在 **`/odometry/local`**，
+    # 并且由它发 `odom→base_footprint` 的 TF。不显式改的话 RPP 拿不到速度反馈，
+    # 现象大概率是"控制器起来了但不动"或反复报取不到 odom，而日志里看起来像"参数没生效"。
+    # **两处都设**：RPP 实际读的是插件级 `FollowPath.odom_topic`（下面那处），
+    # 服务级这个是为了防止 nav2 版本差异/别的插件从服务级取；多设一个未用的键无害。
+    odom_topic: /odometry/local
+
+    progress_checker_plugins: ["progress_checker"]
+    goal_checker_plugins: ["general_goal_checker"]
+    controller_plugins: ["FollowPath"]
+
+    # ---- 坑 1：默认 progress_checker 会把慢车误判成"卡住" ----
+    # nav2 默认 `required_movement_radius: 0.5` / `movement_time_allowance: 10.0`，
+    # 意思是"10 秒内至少要挪 0.5 m"。这台车巡航只有 **0.16 m/s**，10 秒理论位移 1.6 m，
+    # 看着够——但过弯、被 `regulated_linear_scaling` 减速、或起步转向时实际位移会掉到阈值以下，
+    # 一旦误判 → `FollowPath` 立即失败 → `goal_navigator` 的重规划循环就会不停重发
+    # （reviewer 明确点出这条，说"你一定会撞"）。
+    # 放宽到 0.15 m / 20 s（≈ 0.0075 m/s 的有效进度门槛），比任何正常行进都低得多。
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.15
+      movement_time_allowance: 20.0
+
+    general_goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      stateful: true
+      xy_goal_tolerance: 0.25
+      yaw_goal_tolerance: 0.5
+
+    # ---- 控制器：RegulatedPurePursuitController ----
+    # 选它而不是 DWB：低速差速底盘、参数少、行为可解释（brief §2 的建议）。
+    FollowPath:
+      plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      desired_linear_vel: 0.16
+      lookahead_dist: 0.4
+      min_lookahead_dist: 0.2
+      max_lookahead_dist: 0.9
+      lookahead_time: 1.5
+      use_velocity_scaled_lookahead_dist: true
+      transform_tolerance: 0.5
+      # 速度来源：局部 EKF 的 `/odometry/local`（odom 帧，融合轮式里程计 + IMU）。
+      # 注意这只用于**速度**；位姿走 TF（map→base_footprint），与第三阶段一致。
+      odom_topic: /odometry/local
+
+      # 终点段减速，避免冲过目标
+      min_approach_linear_velocity: 0.05
+      approach_velocity_scaling_dist: 0.5
+
+      # ---- 坑 4：`regulated_linear_scaling_min_radius` 必须比 `inflation_radius` 大 ----
+      # 代价地图（两张图共用）的 `inflation_radius` 是 **0.25 m**。RPP 的"贴障碍减速"那一档
+      # 是拿这个半径和代价比出来的——如果它比膨胀半径还小，减速档**永远不会触发**，
+      # 现场解说就会名不副实（不影响判据，但要说实话）。取 0.45 m。
+      use_regulated_linear_velocity_scaling: true
+      use_cost_regulated_linear_velocity_scaling: true
+      regulated_linear_scaling_min_radius: 0.45
+      regulated_linear_scaling_min_speed: 0.05
+
+      # 碰撞检测：向前投影一段，撞了就减速（演示时"贴着墙走会慢下来"是可见的）
+      use_collision_detection: true
+      max_allowed_time_to_collision_up_to_carrot: 1.5
+
+      # 转向：**关掉原地转**（第四步实测的坑，见下）。
+      # 开着的后果实测是"车一动不动，看着像控制器或底盘坏了"：
+      #   `use_rotate_to_heading: true` 时 RPP 只要朝向误差超过 `rotate_to_heading_min_angle`
+      #   就把 `linear.x` **强制置 0**、只发角速度；而它发出的角速度实测只有 ±0.1 rad/s，
+      #   转不动 → 朝向误差一直不收敛 → 一直停在"先转再走"这一步。
+      #   证据：45 s 内 279 条 /cmd_vel 采样，**线速度非零的 0 条**，角速度在 ±0.11 内来回摆；
+      #   同一时刻 controller_server 报 progress_checker 的 `Failed to make progress`
+      #   （20 s 内没挪够 0.15 m）→ FollowPath 中止。**底盘本身是好的**：手动发
+      #   0.15 m/s 直行挪了 0.34 m、发 1.0 rad/s 转了 0.8 rad，odom 都跟着动。
+      # 关掉之后 RPP 正常走"边走边修正朝向"，差速底盘完全够用（本演示要的是车真的走起来）。
+      use_rotate_to_heading: false
+      rotate_to_heading_min_angle: 0.5
+      max_angular_accel: 1.0
+      allow_reversing: false
+
+planner_server:
+  ros__parameters:
+    use_sim_time: true
+    expected_planner_frequency: 1.0
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_navfn_planner/NavfnPlanner"
+      # 未知 = 可走 落在规划器上（brief §2）：全局图大部分格子是未知，
+      # 否则"从零累积"的图根本规划不出路径。
+      allow_unknown: true
+      # 目标点落在障碍/膨胀里时允许的放宽量（米）。
+      tolerance: 0.25
+      use_astar: false

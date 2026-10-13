@@ -1,0 +1,37 @@
+# navsat_transform：把模拟 RTK 的经纬度转成本地 ENU（map 系）
+#
+# 两个关键选择：
+#
+# 1. **wait_for_datum: true + 固定 datum**（基准点就是世界原点对应的经纬度，
+#    见 worlds/rtk_courtyard.sdf 的 <spherical_coordinates> 与 scripts/make_world.py）。
+#    这样 ENU 换算**不需要任何里程计输入**——里程计变差也不会让坐标原点漂。
+# 2. **use_odometry_yaw: false**：航向取自 IMU，不取自里程计积分。
+#    （RTK 本身不给朝向，这是需求里明确的默认值。）
+#
+# 生成的话题：/gps/filtered（map 系下的绝对位姿，喂给全局 EKF）
+navsat_transform:
+  ros__parameters:
+    frequency: 30.0
+    delay: 0.0
+    magnetic_declination_radians: 0.0
+    yaw_offset: 0.0
+    zero_altitude: true
+    broadcast_utm_transform: false
+    broadcast_utm_transform_as_parent_frame: false
+    publish_filtered_gps: true
+    use_odometry_yaw: false
+    wait_for_datum: true
+    # ★★ 阶段九（2026-10-10）：基准对齐到**他们场景自己的地理基准** ✓ ★★
+    #   · 来源 = `outnav1/exports/route_export.json` 与 `map_export.json` 的
+    #     `origin_wgs84` = `{latitude: 30.22413029, longitude: 120.25979315833334}` ✓
+    #   · ★ **它确实是"世界 (0,0) 的经纬度"** ✓ —— 我核过：首点世界 (-0.442,-0.151)
+    #     报的经纬度 (30.224128929, 120.259788563) 与它差 Δlat=-1.361e-6、Δlon=-4.6e-6，
+    #     乘他们自己的投影常数（110858.6 / 96235.3 m/度）正好得 **(-0.442, -0.151)** ✓✓
+    #   · ★★ **为什么必须与世界的球坐标一致** ✓：`map` 帧的原点 = 本 datum 的 UTM ✓，
+    #     而世界原点的经纬度 = 世界的 `<spherical_coordinates>` ✓ ⇒ 两者相等时
+    #     **map 帧 ≡ world 帧** ✓ ⇒ 他们导出的 (x,y) 才是"直接用"的 ✓
+    #     （✗ 不相等 ⇒ 两者差一个平移，整条航线会被整体搬走 ✗）。
+    #   ★ 世界的球坐标由**运行时服务**设成同一个值 ✓（✗ 不动世界文件 ✓ —— 见 note §）。
+    #   原值 30.2276 / 120.27（杭州湾智慧谷）已**不再使用** —— 那个基准与他们的场景
+    #   差了约 1.06 km ✗（Δlon -0.0102 度 x 96235 ≈ -982 m，Δlat -0.0035 度 x 110859 ≈ -386 m）。
+    datum: [30.22413029, 120.25979315833334, 0.0]

@@ -1,0 +1,46 @@
+# RTK 版二维感知演示的运行环境（aarch64 / Gazebo Sim Fortress）
+#
+# 与已有两套演示的关系：
+#   底图复用已构建好的 robonix/rgbd-demo:humble-arm64（ROS 2 Humble + Gazebo Sim
+#   Fortress + ros_gz + RViz + nav2），这一层只补 **robot_localization**——
+#   RTK 定位链路需要的 navsat_transform（WGS84 → 本地 ENU）与 ekf_node。
+#
+# 为什么要新镜像而不是复用：robot_localization 里没有；在容器里现装会让"启动脚本"
+#   依赖网络，不符合可复现。做成一层的代价只有几十兆。
+#
+# 隔离：独立镜像标签、独立容器名、独立 ROS_DOMAIN_ID 与 GZ_PARTITION、独立工作区 rtk_ws，
+#   不碰激光版与视觉版。
+ARG BASE_IMAGE=robonix/rgbd-demo:humble-amd64
+FROM ${BASE_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 构建期临时换国内镜像（packages.ros.org 在这台机器上只有几百 KB/s），装完立刻换回，
+# 镜像里保留的仍是可复现的官方源配置。
+#
+# **版本按号钉死**：换机器/换镜像源重建时拿到的是同一版本组合。
+# 版本号来自本次实际安装结果（记录在 /build-info-rtk.txt）。base 镜像里已有的包
+# （如 ros-humble-tf2-tools）不在这里重复钉，避免把两层的版本绑死。
+# 新增包：
+#   robot_localization 3.5.4  -> navsat_transform（WGS84→ENU）与 ekf_node
+#   topic_tools        1.1.2  -> 排障用（relay/记录开关），非运行期必需
+RUN set -eux; \
+    sed -i 's|http://packages.ros.org/ros2/ubuntu|https://mirrors.aliyun.com/ros2/ubuntu|g' \
+        /etc/apt/sources.list.d/ros2.list; \
+    apt-get update && apt-get install -y --no-install-recommends \
+        ros-humble-robot-localization \
+        ros-humble-topic-tools; \
+    sed -i 's|https://mirrors.aliyun.com/ros2/ubuntu|http://packages.ros.org/ros2/ubuntu|g' \
+        /etc/apt/sources.list.d/ros2.list; \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /work
+
+# 版本记录（写进 /build-info-rtk.txt，供文档引用）
+RUN { head -2 /etc/os-release; \
+      echo "arch:            $(dpkg --print-architecture)"; \
+      dpkg-query -W ros-humble-robot-localization ros-humble-ros-gz-sim \
+                    ros-humble-rviz2 ros-humble-nav2-costmap-2d \
+                    ros-humble-tf2-ros 2>/dev/null \
+        | awk '{printf "%-34s %s\n", $1, $2}'; \
+    } > /build-info-rtk.txt && cat /build-info-rtk.txt

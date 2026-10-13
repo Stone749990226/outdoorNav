@@ -1,0 +1,194 @@
+<?xml version="1.0" ?>
+<!-- Stage 7, redefined 2026-09-30; ★ SCENE CHANGED 2026-10-08 (AuYang): "把台阶与斜面
+     分到不同的边" —— the step and the ramp no longer share one edge.
+
+       upper_platform  : x=-4..0,  y=-3..3,  top z=0      (start (-2,0))
+       lower_platform  : x=-8..16, y=-10..10, top z=-0.30 (goal  (2,0))
+       ★★ SEALED 2026-10-09 (AuYang chose (ii) "seal the scene"): the platform perimeter is
+                         closed with 4 solid blocks EXCEPT the east main edge x=0 (the demo
+                         object) and the north ramp mouth (the only way down).  The block
+                         tops sit 0.15 m ABOVE the platform surface, so from the platform they
+                         read as UPWARD WALLS, not downward drops => the drop detector will
+                         not mark them, while the lidar/camera see them as obstacles so the
+                         planner will not route through them either.  Sealed: south y=-3,
+                         west x=-4, north y=3 (both segments).  See models seal_south /
+                         seal_west / seal_north_w / seal_north_e.
+       ★ cliff (main)  : the WHOLE edge x=0, y=-3..3 is a 0.30 m vertical drop —
+                         a single 6 m straight edge, with NO ramp anywhere on it.
+                         The straight line (-2,0)->(2,0) crosses it at (0,0), so that
+                         line is the cliff, not a route.  (A long straight edge spans
+                         many camera columns, so it passes the detector's >=0.5 m
+                         transverse-span gate and DOES enter the keepout map — this is
+                         the property the demo relies on.  Precedent: in the old world
+                         the x=0 cliff already entered with ptp=1.341 over 17 cells.)
+       ★ ramp_wedge    : MOVED to the north side, then LENGTHENED (AuYang approved,
+                         2026-10-08) to make it shallower: x=-3.25..-0.75, y=3.0..7.0,
+                         top surface from z=0 at y=3 (flush with the high platform's
+                         north edge) down to z=-0.30 at y=7.0 (resting on the low
+                         platform).  Length 4.0 m over a 0.30 m drop => slope 0.075
+                         (4.29 deg), down from the old 0.1875 (10.6 deg).
+                         Rationale (HYPOTHESIS, not a guarantee): with a flat reference
+                         surface the apparent "drop" grows as k*d (k=tan(slope)), so the
+                         older 10.6 deg ramp reached the 0.15 m threshold at d=0.80 m
+                         while the new 4.29 deg one needs d=2.00 m => much less chance of
+                         the detector flagging the ramp's own surface as a drop.
+                         ★ WIDENED 2026-10-09 (AuYang approved (a)): width 2.5 -> 4.0 m
+                         (x=-4.0..0.0, centre still -2.0) so that the ramp mouth covers the
+                         WHOLE north edge and the usable band is 4.0-2*0.30 = 3.4 m (was 1.9 m),
+                         which absorbs the ~25 deg lateral drift measured in ramp7-ao.
+                         ★ CONNECTED: seal_north_w / seal_north_e were DELETED (they were
+                         sized for the old 2.5 m ramp, mouth x=-3.25..-0.75, and would now sit
+                         right on the widened mouth.  With them gone the whole north edge is
+                         ramp mouth => no step there => no shortcut down the north edge either.
+                         seal_south / seal_west are unchanged.
+                         The wedge contains x=-2, directly north of the start, so the
+                         route is simply: drive north, down the ramp, then east, then
+                         south to (2,0) — it never crosses the x=0 cliff.
+
+     Why the change: previously the wedge sat ON the x=0 edge (y=0.5..3), so that single
+     edge was partly a step and partly a ramp, and the detector/planner had to
+     disambiguate the junction.  Separating them removes that ambiguity.
+
+     The two platforms share the x=0 plane, so there is no hole between them: every
+     part of the cliff drops onto the low platform's top surface.
+
+     The wedge is a box rotated by the slope angle; its top face is the ramp surface and
+     the same box is used for <collision> and <visual> (identical geometry).
+
+     Old world (east-side ramp) preserved at:
+       artifacts/rtk-nav2/_backups/depth_drop_ramp_OLD_east_ramp.sdf (sha256 44b445e5...)
+     Conclusions from it hold ONLY for that world. -->
+<sdf version="1.9">
+  <world name="depth_drop_ramp">
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <world_frame_orientation>ENU</world_frame_orientation>
+      <latitude_deg>31.2304</latitude_deg>
+      <longitude_deg>121.4737</longitude_deg>
+      <elevation>4.0</elevation>
+    </spherical_coordinates>
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <plugin filename="ignition-gazebo-physics-system" name="ignition::gazebo::systems::Physics"/>
+    <plugin filename="ignition-gazebo-user-commands-system" name="ignition::gazebo::systems::UserCommands"/>
+    <plugin filename="ignition-gazebo-scene-broadcaster-system" name="ignition::gazebo::systems::SceneBroadcaster"/>
+    <plugin filename="ignition-gazebo-sensors-system" name="ignition::gazebo::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="ignition-gazebo-imu-system" name="ignition::gazebo::systems::Imu"/>
+    <plugin filename="ignition-gazebo-navsat-system" name="ignition::gazebo::systems::NavSat"/>
+    <scene>
+      <ambient>0.7 0.7 0.7 1</ambient>
+      <background>0.75 0.8 0.85 1</background>
+      <shadows>false</shadows>
+    </scene>
+    <light type="directional" name="sun">
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.9 0.9 0.9 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.3 0.3 -1</direction>
+    </light>
+    <!-- 高台做成 0.30 m 厚（顶面 z=0、底面 z=-0.30），好让它在 x=0 的东侧面
+         正好是一道**从高台面落到低台面**的 0.30 m 垂直断崖面——若沿用 0.20 m 厚，
+         底面会比低台面高 0.10 m，断崖边缘下就多出一条悬空缝。 -->
+    <model name="upper_platform">
+      <static>true</static>
+      <pose>-2 0 -0.15 0 0 0</pose>
+      <link name="slab">
+        <collision name="collision"><geometry><box><size>4 6 0.30</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>4 6 0.30</size></box></geometry>
+          <material><ambient>0.25 0.65 0.48 1</ambient><diffuse>0.25 0.65 0.48 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <!-- 低台与高台**在 x=0 直接相邻**（落差 0.30 m 的断崖就落在这块台面上）。
+         ★ 2026-09-30：尺寸由 8x6 放大到 **24x20**（同一顶面 z=-0.30，等于给整个场地铺一层
+         低台面）。原因是 reviewer `rev7-ramp-e2` 实测：平台外的**虚空**会被
+         "无回波⇒空闲"的射线清除判成 free，反向目标时规划器直接把路径画到平台外
+         （203 点里 46 点 y>3.0），真值车在 `(1.478, 3.001)` 开出北沿、掉出世界
+         （Gazebo 位姿被抛到 z=-1.05e6）。铺满低台面之后平台外不再是虚空。 -->
+    <model name="lower_platform">
+      <static>true</static>
+      <pose>4 0 -0.40 0 0 0</pose>
+      <link name="slab">
+        <collision name="collision"><geometry><box><size>24 20 0.20</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24 20 0.20</size></box></geometry>
+          <material><ambient>0.30 0.40 0.76 1</ambient><diffuse>0.30 0.40 0.76 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <!-- ★ 楔形坡（2026-10-08 改场景：从**东侧**搬到**北侧** —— "台阶与斜面分到不同的边"；
+         同日再按 AuYang 批的"**坡做缓**"把坡**拉长**：长 1.6 → **4.0 m**、高 0.30 m 不变 ⇒ 坡度
+         10.62° → **4.29°** ✓）：
+         坡体沿 **y** 方向倾斜，顶面在 **y=3.0** 处与高台北沿同高（z=0）、在 **y=7.0** 处落到低台面（z=-0.30）。
+         box 长 = sqrt(4.0^2+0.30^2) = 4.01123（**沿 y**），厚 0.10，宽 2.5（**沿 x**）；
+         中心与俯仰角由"顶面两端点"反解（**绕 x 轴转 -0.07486**）。
+         ★ **拉长的理由（假设，非保证）**：坡变缓后，"**平参考面把坡面当落差**"的压力显著下降 ——
+         平参考面偏差 ≈ `k·d`（k=tanθ）：**旧 10.62° 的 k=0.188 ⇒ 0.80 m 就到 `T=0.15`** ✗；
+         **新 4.29° 的 k=0.075 ⇒ 要 2.00 m 才够** ✓ ⇒ 检出坡面自身的机会大减 ✓。
+         **⚠ 但坡顶折角的视角关系也变了 ⇒ 结论以实测为准，不许写成"必然修好"** ✗。
+         ★ **低台覆盖已核**：`lower_platform` = `x∈[-8,16], y∈[-10,10]` ⇒ **`y∈[3,7]` 完全覆盖** ✓（无需改平台 ✓）。
+         ★ 改动实质：原坡占掉了 **x=0 那条边的一段（y∈[0.5,3.0]）**，正是"同一条边既当台阶又当斜面"的来源；
+         搬走后 **x=0 全程是纯台阶（y∈[-3,3]，6 m 长直）** ⇒ 长直边跨度大、能过"ptp≥0.5"那道门 ⇒ 能进图。
+         ★ 旧世界（东侧坡）已备份：artifacts/rtk-nav2/_backups/depth_drop_ramp_OLD_east_ramp.sdf（sha256 44b445e5…） -->
+    <model name="ramp_wedge">
+      <static>true</static>
+      <pose>-2.0 4.99626 -0.19986 -0.07486 0 0</pose>
+      <link name="slab">
+        <collision name="collision"><geometry><box><size>4.00 4.01123 0.10</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>4.00 4.01123 0.10</size></box></geometry>
+          <material><ambient>0.75 0.55 0.25 1</ambient><diffuse>0.75 0.55 0.25 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <!-- ★★ 封边块（2026-10-09，AuYang 选 (ii)「场景封边、尽量简单」）：
+         把高台周界**除「东主边 x=0（演示对象）」与「北侧坡口 x∈[-3.25,-0.75]（通道）」之外**的部分封住 ——
+         即南沿 y=-3、西沿 x=-4、北沿两段（x∈[-4,-3.25] 与 x∈[-0.75,0]，y=3）✓。**只加这 4 个 box，不动平台、不动坡** ✓。
+
+         ★ 关键（reviewer 强调）：**块顶要高于台面**（这里 +0.15 m，落在建议的 +0.10~0.20 ✓），且**贴着台边外侧**
+         （内侧面与台边齐平、**不占台面** ✓）。**为什么必须高** ✓：这样该处的深度特征变成**向上的墙**、
+         **不是向下的落差** ⇒ **检测器不会把它标成落差** ✓；同时**物理上挡住** + **激光/相机把它当障碍进障碍层**
+         ⇒ **规划器也不会往那儿规划** ✓ —— **两条都要**，否则会退化成"规划器仍规划那条路、车推到墙上卡死" ✗（比不封更糟 ✗）。
+         东主边 x=0 与北坡口：**一律不动** ✓。
+         几何：顶 z=+0.15、底 z=-0.30（落到低台面）⇒ 高 0.45、z 中心 -0.075；厚 0.30 ✓。 -->
+    <model name="seal_south">
+      <static>true</static>
+      <pose>-2.0 -3.15 -0.075 0 0 0</pose>
+      <link name="b">
+        <collision name="c"><geometry><box><size>4.00 0.30 0.45</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>4.00 0.30 0.45</size></box></geometry>
+          <material><ambient>0.35 0.35 0.40 1</ambient><diffuse>0.35 0.35 0.40 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="seal_west">
+      <static>true</static>
+      <pose>-4.15 0.0 -0.075 0 0 0</pose>
+      <link name="b">
+        <collision name="c"><geometry><box><size>0.30 6.00 0.45</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.30 6.00 0.45</size></box></geometry>
+          <material><ambient>0.35 0.35 0.40 1</ambient><diffuse>0.35 0.35 0.40 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="ramp_seal_east">
+      <static>true</static>
+      <pose>0.1500 5.0000 -0.1750 0 0 0</pose>
+      <link name="b">
+        <collision name="c"><geometry><box><size>0.30 4.00 0.65</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.30 4.00 0.65</size></box></geometry>
+          <material><ambient>0.35 0.35 0.40 1</ambient><diffuse>0.35 0.35 0.40 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="ramp_seal_west">
+      <static>true</static>
+      <pose>-4.1500 5.0000 -0.1750 0 0 0</pose>
+      <link name="b">
+        <collision name="c"><geometry><box><size>0.30 4.00 0.65</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.30 4.00 0.65</size></box></geometry>
+          <material><ambient>0.35 0.35 0.40 1</ambient><diffuse>0.35 0.35 0.40 1</diffuse></material></visual>
+      </link>
+    </model>
+  </world>
+</sdf>

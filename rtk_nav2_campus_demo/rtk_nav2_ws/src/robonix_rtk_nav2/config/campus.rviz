@@ -1,0 +1,173 @@
+# ★ 阶段八：校园 100 m 场景的 RViz 配置（以 `demo.rviz` 为底，**只改视图**）。
+#
+# 为什么要单独一份：`demo.rviz` 的视图是 `TopDownOrtho` + `Scale: 45`（1 m = 45 px）
+# —— 那是给 10 m 庭院场景调的；在 100 m 校园上等于"只看得见几米"，
+# 截图里既看不出车在哪、也看不出目标与路径 ✗。
+# 本文件把 Scale 放到 **8**（120 m 摊在约 1000 px 的视口里 ⇒ 全场一次看全），
+# 并把视图中心放回世界原点（校园中心就是 (0,0)）。
+# **显示项一个没动**：Grid / TF / RobotModel / 全局图 / 局部图 / `/rtk/plan_path` / 相机两图。
+# 阶段三那份 `demo.rviz` **一字未改** ⇒ 阶段三/七的可复跑不受影响 ✓。
+#
+Panels:
+- Class: rviz_common/Displays
+  Name: Displays
+- Class: rviz_common/Views
+  Name: Views
+Visualization Manager:
+  Class: ''
+  Displays:
+  - Class: rviz_default_plugins/Grid
+    Enabled: true
+    Name: Grid
+    Cell Size: 1
+    Color: 120; 120; 120
+    Plane Cell Count: 20
+    Reference Frame: <Fixed Frame>
+  - Class: rviz_default_plugins/TF
+    Enabled: true
+    Name: TF
+    Show Names: false
+    Marker Scale: 0.6
+    Frame Timeout: 15
+  - Class: rviz_default_plugins/RobotModel
+    Enabled: true
+    Name: RobotModel
+    Description Topic:
+      Value: /robot_description
+    Visual Enabled: true
+    # ★★ 2026-10-10：想让 `rtk_marker_link`（车的实时位置小红点）**不在 RViz 里画** ✗ ★★
+    #   下面这几行**留着但它不生效** ✗ —— ★ **实测事实**（不许写成"已隐藏" ✗）：
+    #     `Alpha: 0` ＋ `Visible: false` 都写了 ✓，RViz **也确认读到了本文件**（同一份配置里
+    #     `RobotPose` 的勾确实跟着我的改动变 ✓）⇒ ★ **但红点照旧渲染** ✗
+    #     ⇒ 结论：**RViz2 的 RobotModel 不采纳按 link 的这两个属性** ✓（或键名不同）。
+    #   ★ 定性证据：把红点放大到 600% 看 ⇒ 是**实心红盘 6x7 px** ✓（= 那个盘 ✓），
+    #     不是 `RobotPose`（颜色 `255;80;0` 橙红、且已勾掉过 ✓）也不是 `TF`（坐标轴是红绿蓝小叉 ✓）。
+    #   ★ 局部代价图**全 0**（中心 3x3 都是 0 ✓）⇒ 也**不是**代价图的致命格 ✓。
+    #   ★ **业主 2026-10-10 裁定**："rviz 中的红点若难以去掉就算了，可保留" ✓ ⇒ **保留** ✓。
+    #   ★ 只影响 RViz 的**显示** ✓；Gazebo 侧渲染与仿真本身都不受影响 ✓。
+    Links:
+      rtk_marker_link:
+        Alpha: 0
+        Show Axes: false
+        Show Trail: false
+        Visible: false
+  - Class: rviz_default_plugins/Odometry
+    Enabled: true
+    Name: RobotPose（车在哪）
+    Topic:
+      Value: /odometry/global
+      Depth: 5
+      Durability Policy: Volatile
+      Reliability Policy: Reliable
+    Keep: 1
+    Position Tolerance: 0.1
+    Angle Tolerance: 0.2
+    Shape:
+      Alpha: 1
+      Axes Length: 4
+      Axes Radius: 0.3
+      Color: 255; 80; 0
+      Head Length: 1.4
+      Head Radius: 0.5
+      Shaft Length: 4
+      Shaft Radius: 0.22
+    Covariance:
+      Position:
+        Alpha: 0
+      Orientation:
+        Alpha: 0
+  - Class: rviz_default_plugins/Map
+    Enabled: true   # ★★ 2026-10-10（业主反馈 + reviewer 复量）：**这一层要开着** ✓ ★★
+    #   ★ 上一轮我们理解偏了 ✗：业主说"代价地图里不要看到（静态障碍）" ✓，
+    #     我们就把**整个全局图**关掉了 ✗ ⇒ ★ 业主看到的是"**走过区域的障碍没显示**" ✗。
+    #   ★ reviewer 量的现状：`LocalCostmap-nav2` 是 **8×8 m 滚动窗口** ✓ ⇒ 只显示近处 ✓；
+    #     而 ★ **累积**的那张（`rolling_window: false` ＋ 120×120 ✓）**正是全局图** ✗ —— 被关掉了 ✗。
+    #   ⇒ ★ 现在**开着** ✓ ⇒ 车**走过沿线的实时障碍会留在上面** ✓（这正是业主要的 ✓）。
+    #   ★ 注意口径：全局图这一层现在**不含静态障碍** ✓（`campus_nav2.yaml` 的 `plugins`
+    #     仍是 `["obstacle_layer","inflation_layer"]` ✓，**一个字不许动** ✗）
+    #     ⇒ 它显示的就是**实时探测到的、累积下来的**障碍 ✓ —— 与业主原意一致 ✓。
+    #   ★ 局部图那一层**保留** ✓（近处更细 ✓，业主说"留着也可以" ✓）。
+    #   ⇒ 全局图这一层**关掉显示** ✓（★ 只影响**显示** ✓，不碰规划 ✓）
+    #   ★ 同一轮里全局图的 `plugins` 也拿掉了 `static_layer` ✓（见 campus_nav2.yaml ✓）——
+    #     但两件事**归因分开** ✓：这里是"显示"，那里是"规划层" ✓。
+    Name: GlobalCostmap-nav2
+    Topic:
+      Depth: 1
+      Durability Policy: Transient Local
+      Filter size: 10
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /global_costmap/costmap
+    Alpha: 0.6
+    Color Scheme: map
+    Draw Behind: false
+    Update Topic:
+      Value: /global_costmap/costmap_updates
+  - Class: rviz_default_plugins/Map
+    Enabled: true
+    Name: LocalCostmap-nav2
+    Topic:
+      Depth: 1
+      Durability Policy: Transient Local
+      Filter size: 10
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /local_costmap/costmap
+    Alpha: 0.7
+    Color Scheme: costmap
+    Draw Behind: false
+    Update Topic:
+      Value: /local_costmap/costmap_updates
+  - Class: rviz_default_plugins/Path
+    Enabled: true
+    Name: PlanPath
+    Topic:
+      Value: /rtk/plan_path
+      Depth: 1
+      Durability Policy: Transient Local
+      Reliability Policy: Reliable
+    Color: 0; 255; 0
+    Line Style: Lines
+    Line Width: 0.03
+  - Class: rviz_default_plugins/Image
+    Enabled: true
+    Name: RGB
+    Max Value: 1
+    Min Value: 0
+    Topic:
+      Value: /rtk/camera/image
+      Depth: 5
+      Reliability Policy: Best Effort
+  - Class: rviz_default_plugins/Image
+    Enabled: true
+    Name: Depth
+    Max Value: 1
+    Min Value: 0
+    Topic:
+      Value: /rtk/camera/depth_display
+      Depth: 5
+      Reliability Policy: Best Effort
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: map
+    Frame Rate: 20
+  Tools:
+  - Class: rviz_default_plugins/MoveCamera
+  - Class: rviz_default_plugins/FocusCamera
+  Views:
+    Current:
+      Class: rviz_default_plugins/TopDownOrtho
+      Name: Current View
+      Near Clip Distance: 0.01
+      # ★ 阶段八：45 -> **7**（`demo.rviz` 里的 45 是给 10 m 场景的）。
+      #   ★ 先是写 8，被 reviewer 按图量出来"**看不全**"：RViz 画布实测约 735 px 宽，
+      #     735 ÷ 8 = 约 90 m < 场地含封边墙的 99 m ⇒ **封边墙落在视野外** ✗。
+      #     按 735 ÷ 99 = 7.4 取 **7** ⇒ 一屏真的装得下整块场地 ✓
+      Scale: 7
+      Target Frame: <Fixed Frame>
+      Angle: 0
+      X: 0
+      Y: 0
+Window Geometry:
+  Height: 800
+  Width: 1200

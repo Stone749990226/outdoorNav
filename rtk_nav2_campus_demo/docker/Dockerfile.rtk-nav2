@@ -1,0 +1,46 @@
+# RTK 第三阶段（复用 nav2 建图与规划）的运行环境（aarch64 / Gazebo Sim Fortress）
+#
+# 与已有各层的关系：
+#   底图 robonix/rgbd-demo:humble-arm64（ROS 2 Humble + Gazebo Fortress + ros_gz + RViz + **nav2 全套**）
+#     -> robonix/rtk-demo:humble-arm64（只补 robot_localization：navsat_transform + ekf_node）
+#       -> 本层（只补 depth_image_proc）
+#
+# 为什么本层是必需的：第三阶段 brief §2 要求"相机深度经 `depth_image_proc/point_cloud_xyz`
+# 转点云（不再自写反投影）"，而底图里 **没有** depth_image_proc（也没有 image_proc；
+# image_transport / cv_bridge 在）。实测 `ros2 pkg prefix depth_image_proc` → MISSING。
+# nav2 全套本来就在底图里（nav2_planner / nav2_costmap_2d / nav2_navfn_planner /
+# nav2_controller / nav2_lifecycle_manager / nav2_map_server / nav2_msgs / nav2_rviz_plugins
+# 均在 /opt/ros/humble），所以本层**不需要**再装 nav2。
+#
+# 隔离：独立镜像标签、独立容器名 robonix-rtk-nav2-demo、独立 ROS_DOMAIN_ID（44）、
+#   独立 GZ partition（rtknav2）、独立工作区 rtk_nav2_ws、独立产物 artifacts/rtk-nav2。
+#   不碰激光版 / 视觉版 / RTK 前两阶段的任何镜像与产物。
+ARG BASE_IMAGE=robonix/rtk-demo:humble-amd64
+FROM ${BASE_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 构建期临时换国内镜像（packages.ros.org 在这台机器上只有几百 KB/s），装完立刻换回，
+# 镜像里保留的仍是可复现的官方源配置。**版本按号钉死**，换机器重建拿到同一版本。
+RUN set -eux; \
+    sed -i 's|http://packages.ros.org/ros2/ubuntu|https://mirrors.aliyun.com/ros2/ubuntu|g' \
+        /etc/apt/sources.list.d/ros2.list; \
+    apt-get update && apt-get install -y --no-install-recommends \
+        ros-humble-depth-image-proc; \
+    sed -i 's|https://mirrors.aliyun.com/ros2/ubuntu|http://packages.ros.org/ros2/ubuntu|g' \
+        /etc/apt/sources.list.d/ros2.list; \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /work
+
+# 版本记录（写进 /build-info-rtk-nav2.txt，供文档引用）
+RUN { head -2 /etc/os-release; \
+      echo "arch:            $(dpkg --print-architecture)"; \
+      dpkg-query -W ros-humble-depth-image-proc ros-humble-nav2-costmap-2d \
+                    ros-humble-nav2-navfn-planner ros-humble-nav2-planner \
+                    ros-humble-nav2-controller ros-humble-nav2-lifecycle-manager \
+                    ros-humble-nav2-map-server ros-humble-nav2-msgs \
+                    ros-humble-nav2-rviz-plugins ros-humble-robot-localization \
+                    2>/dev/null \
+        | awk '{printf "%-38s %s\n", $1, $2}'; \
+    } > /build-info-rtk-nav2.txt && cat /build-info-rtk-nav2.txt
