@@ -4,7 +4,7 @@
     <static>true</static>
     <link name="site">
       <visual name="ground">
-        <pose>49.0 -37.5 -0.1 0 0 0</pose>
+        <pose>49.0 -37.5 -0.071 0 0 0</pose>
         <geometry>
           <box>
             <size>138 131 0.2</size>
@@ -16,7 +16,7 @@
         </material>
       </visual>
       <collision name="ground">
-        <pose>49.0 -37.5 -0.1 0 0 0</pose>
+        <pose>49.0 -37.5 -0.071 0 0 0</pose>
         <geometry>
           <box>
             <size>138 131 0.2</size>

@@ -150,7 +150,7 @@ def write_world(output, config, roads, plaza, obstacles, bounds):
     element(model, "static", "true")
     link = element(model, "link", name="site")
     xmin, ymin, xmax, ymax = bounds
-    shape(link, "ground", "box", [xmax-xmin, ymax-ymin, 0.2], [(xmin+xmax)/2, (ymin+ymax)/2, -0.1, 0, 0, 0], "0.29 0.40 0.25 1")
+    shape(link, "ground", "box", [xmax-xmin, ymax-ymin, 0.2], [(xmin+xmax)/2, (ymin+ymax)/2, -0.071, 0, 0, 0], "0.29 0.40 0.25 1")
     for name, poly, z, color in [("roads", roads.difference(plaza), 0.03, "0.25 0.29 0.31 1"), ("plaza", plaza, 0.03, "0.72 0.70 0.62 1")]:
         mesh(model_dir / f"meshes/{name}.dae", poly)
         visual = element(link, "visual", name=name)
