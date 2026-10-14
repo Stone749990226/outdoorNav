@@ -214,9 +214,32 @@ docker exec "${CONTAINER}" bash -lc \
 sleep 12
 say "  ★ 自检："
 say "    HTTP :8765 ⇒ $(docker exec "${CONTAINER}" bash -lc 'curl -s --max-time 5 http://127.0.0.1:8765/api/status' 2>/dev/null | head -c 120)"
-say "    use_sim_time ⇒ $(docker exec "${CONTAINER}" bash -lc 'source /opt/ros/humble/setup.bash && timeout 20 ros2 param get /outdoor_nav_bridge use_sim_time 2>/dev/null' 2>/dev/null | tr -d '\n')"
-say "    /odom 发布者 ⇒ $(docker exec "${CONTAINER}" bash -lc 'source /opt/ros/humble/setup.bash && timeout 20 ros2 topic info /odom 2>/dev/null' 2>/dev/null | /bin/grep -oE 'Publisher count: [0-9]+' || echo '（取不到）')"
-say "    :5173 监听（★ **宿主侧**量 ✓ —— 容器是 host 网络 ⇒ 宿主侧量到的就是它 ✓）⇒ $( (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | /bin/grep -c ":5173" )"
+# ★★ 这两条也补 `-k 5` ✗（★ 2026-10-14，reviewer 指出 ✓）：★ 同一条机理 ✓ ——
+#   ★ `ros2` CLI 是 Python，卡在**服务调用**里时不回字节码层 ⇒ ★ SIGTERM 不落地 ✗
+#     ⇒ ★ `timeout` **只发 TERM** ⇒ 它自己也永等 ⇒ **永挂** ✗
+#   ★ 实测过它的真身 ✓：`start-demo.sh` 里那条 `timeout 30 ros2 param dump` 挂了 **32 分钟** ✗
+#   ★ 而这两条就在**业主每次跑前端链都会走的自检**里 ⇒ ★ 挂了就是"自检卡住" ✗
+say "    use_sim_time ⇒ $(docker exec "${CONTAINER}" bash -lc 'source /opt/ros/humble/setup.bash && timeout -k 5 20 ros2 param get /outdoor_nav_bridge use_sim_time 2>/dev/null' 2>/dev/null | tr -d '\n')"
+say "    /odom 发布者 ⇒ $(docker exec "${CONTAINER}" bash -lc 'source /opt/ros/humble/setup.bash && timeout -k 5 20 ros2 topic info /odom 2>/dev/null' 2>/dev/null | /bin/grep -oE 'Publisher count: [0-9]+' || echo '（取不到）')"
+# ★★ :5173 **当闸** ✓（★ 2026-10-14 加 ✗ —— reviewer 指出的 ✓：原来只**打印**计数 ⇒
+#   前端没起来也照样报"完 ⇒ 现在可以用了" ✗ ⇒ ★ 与本仓"**发起 ≠ 做成**"同族 ✓）
+#   ★ 判据落**两处**：① 端口在听 ✓ ＋ ② **真能取回页面**（HTTP 200 ✓）——
+#     ★ 只判端口不够 ✗：dev server 可能在听但编译失败 ✓（那也打不开 ✓）
+#   ★ ★ 而且**要等**（✗ 不睡死一个固定秒数就判 ✗）—— 前端冷起要几秒 ✓
+P5173=""; CODE=""
+for _ in $(seq 1 20); do
+    P5173="$( (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | /bin/grep -c ":5173" )"
+    CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:5173/ 2>/dev/null)"
+    [ "${P5173}" != 0 ] && [ "${CODE}" = "200" ] && break
+    sleep 2
+done
+say "    :5173 监听（★ **宿主侧**量 ✓ —— 容器是 host 网络 ⇒ 宿主侧量到的就是它 ✓）⇒ ${P5173}"
+say "    :5173 取页面（★ 宿主侧 curl ✓）⇒ HTTP ${CODE}（★ 要 200 ✓，✗ 只看端口不算 ✓）"
 say "    :5173 服务的**那份**＝仓里那份 ⇒ ★ 起前端之前已逐字节比过 ✓（见上面 ② 那行的清单指纹 ✓）"
+if [ "${P5173}" = "0" ] || [ "${CODE}" != "200" ]; then
+    say "✗ 前端**没起来**（端口 ${P5173}／HTTP ${CODE}）⇒ ★ **就地停下** ✗（✗ 不报「完」✗）"
+    say "  ⇒ 看 ${OUT}/frontend_dev.log 尾部："
+    docker exec "${CONTAINER}" bash -lc "tail -20 ${OUT}/frontend_dev.log" 2>/dev/null | sed 's/^/    /'
+    exit 1
+fi
 say "★ 完 ⇒ 现在可以 POST /api/routes 了 ✓（★ 浏览器开 http://localhost:5173 ✓ —— ★ WSL 侧、Windows 侧都行 ✓、✗ 不用切 Windows ✗）"
-say "  ★ ⚠ 若 :5173 是 0 ⇒ 看 ${OUT}/frontend_dev.log ✓（★ 别当『没起』就跳过 ✓）"

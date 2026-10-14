@@ -70,6 +70,16 @@ export function withCarStart(
   if (!(lead > 0.1)) return route;
   const carEntry = {
     ...toGeoreferenced(mapToSvg({ x: car.x, y: car.y })),
+    // ★★ 这个 yaw **不再过 `mapYaw()`** ✓（★ 2026-10-14 复核过 ✓）：
+    //   ★ 车 pose 的 yaw **已经是 `map` 帧** ✓ —— 适配器发 `/odom` 时直接把
+    //     TF `map→base_link` 的**旋转原样**拷进去 ✓（`frontend_adapter.py::publish_odom`：
+    //     `tf.lookup_transform(MAP_FRAME, BASE_FRAME, …)` ⇒ `message.pose.pose.orientation = q` ✓）
+    //     ⇒ ★ 桥从那个四元数算出来的 yaw 就是 map 帧 ✓
+    //   ★ 而 `mapYaw()` 是给**另一路**用的 ✓：`extractWaypoints` 算的是 `atan2(-Δy_svg, Δx_svg)`
+    //     —— ★ 那是**转过 `rotation_rad` 之前**的角度 ✓ ⇒ ★ 只有它需要 `mapYaw()` 转进 map 帧 ✓
+    //     （见 `waypoints.ts::serializeWaypoints` ✓）
+    //   ⇒ ★ 这里再过一次 `mapYaw()` ⇒ ★ 会把 `rotation_rad` **加第二次** ✗
+    //     （★ 本标定 `rotation_rad = 0` ⇒ 现在两者同值 ⇒ ✗ 看不出来 ✗ —— 所以写成注释钉住 ✓）
     yaw: +car.yaw.toFixed(5),
   };
   return {

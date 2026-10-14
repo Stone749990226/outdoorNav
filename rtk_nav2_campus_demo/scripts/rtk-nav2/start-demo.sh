@@ -160,13 +160,115 @@ for attempt in 1 2 3; do
 
     log "等待定位链 / 相机与点云 / 危险距离 / nav2 两张图就绪（最长 300 秒）"
     READY_LOG="${PROJECT_DIR}/artifacts/rtk-nav2/${RUN_ID}/logs/readiness.log"
+    # ★★★ 2026-10-14（步骤②）：★ **不再盲等满 300 s** ✗ ★★★
+    #   ★ 现象（业主 2026-10-14 亲报 ✓）：★ 第一次起栈 ⇒
+    #     `[lifecycle_manager] … async_send_request failed` ⇒
+    #     `[ERROR] Failed to bring up all requested nodes. Aborting bringup.`
+    #     ⇒ ★ **nav2 没激活** ⇒ ① 没有代价地图（＝"激光周围没有那个圆盘" ✓）
+    #        ② 桥的 `server_is_ready()` 恒 false ⇒ ★ 发路径**一直停在 queued** ⇒ **车不动** ✓
+    #     ⇒ ★ 旧行为：waiter 只会**等满 300 s** ⇒ 然后重试 ⇒ ★ 第二次就好了 ✓（★ 慢，但能救回 ✓）
+    #   ★ 改法 ✓：★ 把 waiter 丢到**后台** ✓（它自己把退出码写成凭据 ✓，见 `wait_ready_then_rc.sh`），
+    #     宿主侧一边等它、一边**盯 `demo_launch.log` 里那条具体特征** ✓：
+    #       `Failed to bring up all requested nodes. Aborting bringup.`
+    #     ⇒ ★ 一出现就**立刻判未就绪** ✗（✗ 不空等 ✓）⇒ 走**原来那条重试路径** ✓（行为不变 ✓）
+    #   ★ ★ 判据拿**具体值**比 ✓（✗ 不拿"有没有 ERROR"这种否定式 ✓ —— 启动期的 ERROR 有一堆 ✓）
+    #   ★ ★ 且**不放松就绪闸** ✗：`wait_ready.py` 自己那几条判据一个字没动 ✓；
+    #     这条只是"**更早判失败**" ✓（✗ 绝不把"没就绪"变成"就绪" ✗）
+    #   ★ `demo_launch.log` 每轮重开（`> ` 截断 ✓，见 `container/start_stack.sh:179`）
+    #     ⇒ ★ 不会把上一轮的 abort 误判成本轮的 ✓
+    #   ★ ★ 凭据与日志都落在**挂载树**里 ✓ ⇒ 宿主侧直接读 ⇒ ★ 轮询里**不夹 `docker exec`** ✓
+    #     （★ 每次 `docker exec` 要 0.2~3 s ✗ ⇒ 会把这 10 s 的预算吃光 ✓）
+    READY_RC_HOST="${PROJECT_DIR}/artifacts/rtk-nav2/${RUN_ID}/logs/ready_rc"
+    READY_STARTED_HOST="${READY_RC_HOST}.started"
+    LAUNCH_LOG="${PROJECT_DIR}/artifacts/rtk-nav2/${RUN_ID}/logs/demo_launch.log"
+    ABORT_PAT='Failed to bring up all requested nodes. Aborting bringup.'
+    # ★★ 第三条早识别用（★ 2026-10-14 **在业主眼前那一轮实测到** ✓）：★ lifecycle **卡住**的判据 ✓
+    #   ★ 现场 ✓：`demo_launch.log` 里 `lifecycle_manager_nav2` 一共只有 **5 行**，最后一行是
+    #     `Configuring controller_server` ⇒ ★ 之后 **215 s 一个字都没有** ✗，
+    #     ★ 而 `Aborting bringup` **一行都没出现** ✗（服务调用**既不回、也不超时** ✗）
+    #   ⇒ ★ 只盯 `Aborting bringup` **在这条上不会触发** ✗ ⇒ 还得补一条"**停住不动**"的判据 ✓
+    #   ★ `LIFECYCLE_STALL_S` 的取法 ✓：★ 取**健康起栈里 lifecycle 相邻两行的最大间隔**的若干倍 ✓
+    #     （✗ 不拍脑袋 ✗）—— ★ 健康值实测见交接文档；这里先给一个**保守**的初值 ✓
+    #   ★ ★ 阈值**实测标定** ✓（2026-10-14 ✓）：★ 健康那一轮里，lifecycle 相邻两行的
+    #     **最大间隔 = 1.1 s** ✓（n=11 行 ✓）⇒ ★ 取 **30 s** ⇒ ★ 27 倍余量 ✓
+    #     （★ 卡住那轮实测 ≥215 s ✓ ⇒ 30 s 判得出、且远不到 300 s ✓）
+    LIFECYCLE_STALL_S="${LIFECYCLE_STALL_S:-30}"
+    rm -f "${READY_RC_HOST}" "${READY_STARTED_HOST}"
+    cexec_bg "/work/artifacts/rtk-nav2/${RUN_ID}/logs/readiness.log" \
+        "/work/scripts/rtk-nav2/container/wait_ready_then_rc.sh '${WS_DIR}' 300 '/work/artifacts/rtk-nav2/${RUN_ID}/logs/ready_rc'"
     set +e
-    cexec "source /opt/ros/humble/setup.bash && source ${WS_DIR}/install/setup.bash && \
-           python3 ${WS_DIR}/src/robonix_rtk_nav2/scripts/wait_ready.py 300" \
-        > "${READY_LOG}" 2>&1
-    READY_RC=$?
+    READY_RC=""
+    T_WAIT0="$(date +%s)"
+    WAITER_OK=0
+    while :; do
+        rc="$(tr -d '\r\n ' < "${READY_RC_HOST}" 2>/dev/null)"
+        if [ -n "${rc}" ]; then READY_RC="${rc}"; break; fi
+        # ★★ "waiter 到底起没起" —— ★ 2026-10-14 实测加的判据 ✓（✗ 不是想出来的 ✗）：
+        #   第一版 waiter 写成 `set -u` ＋ `source /opt/ros/humble/setup.bash`
+        #   ⇒ ★ 它 0.0 s 就死（`AMENT_TRACE_SETUP_FILES: unbound variable`）✗
+        #   ⇒ ★ rc 文件永远不写，而宿主侧**完全看不出来** ✗ ⇒ ★ 白等 330 s × 3 次 = 1124 s ✗✗
+        #   ⇒ ★ 现在 waiter **先写哨兵** ✓ ⇒ ★ 20 s 内没哨兵 ⇒ 立刻判失败 ✓
+        if [ "${WAITER_OK}" -eq 0 ] && [ -s "${READY_STARTED_HOST}" ]; then
+            WAITER_OK=1
+            log "★ 就绪 waiter 已起 ✓（哨兵 ${READY_STARTED_HOST##*/} 出现 ✓）"
+        fi
+        if [ "${WAITER_OK}" -eq 0 ] && [ $(( $(date +%s) - T_WAIT0 )) -gt 20 ]; then
+            READY_RC=125
+            log "✗ **就绪 waiter 根本没起来** ✗（20 s 内没写出哨兵 ✓）⇒ 判未就绪 ✗（✗ 不空等 330 s ✗）"
+            log "   ★ 依据：2026-10-14 第一版 waiter 因 `set -u` ＋ ROS `setup.bash` 当场死 ✓"
+            log "     ⇒ rc 文件永远不写、宿主侧看不出差别 ⇒ 白等 1124 s ✗"
+            log "   ⇒ 看 ${READY_LOG} 的尾部："
+            tail -5 "${READY_LOG}" 2>/dev/null | sed 's/^/     /'
+            break
+        fi
+        # ★★ 早识别②：★ lifecycle **停住不动** ✗（★ `Aborting bringup` 那条在它上面**永远不出现** ✗）★
+        #   ★ 判据落**具体量**上 ✓：★ 最后一条 `lifecycle_manager_nav2` 那行**自带的 epoch 秒** ✓
+        #     ⇒ ★ 距今超过 `LIFECYCLE_STALL_S` 秒 ⇒ 判未就绪 ✓（✗ 不拿"有没有 ERROR"这种否定式 ✗）
+        n_life="$(/bin/grep -ac 'lifecycle_manager_nav2' "${LAUNCH_LOG}" 2>/dev/null)"
+        if [ -n "${n_life}" ] && [ "${n_life}" != "0" ]; then
+            last_life="$(/bin/grep -a 'lifecycle_manager_nav2' "${LAUNCH_LOG}" 2>/dev/null | tail -1)"
+            t_life="$(printf '%s' "${last_life}" | /bin/grep -oE '\[[0-9]{10}\.[0-9]+\]' | head -1 | tr -d '[]' | cut -d. -f1)"
+            # ★★ 还要**认状态** ✗（★ 2026-10-14 实测补的 ✓ —— 差点写成假阳性 ✗）：
+            #   ★ 健康轮里 lifecycle **激活完就不再打日志**了 ✓（最后一行是 `Creating bond timer...` ✓，
+            #     它到日志末行已 49 s ✓ 且还在涨 ✓）⇒ ★ 只按"最后一行有多旧"判，**健康轮迟早也会命中** ✗✗
+            #   ⇒ ★ 判据再收紧一层 ✓：★ 最后那行必须**是一个"起了头没干完"的状态变更** ✓
+            #     即含 `Configuring ` 或 `Activating ` ✓ —— ★ 健康轮的末行是 `Creating bond timer...` ✓
+            #     /`Managed nodes are active` ✓ ⇒ ✗ 不匹配 ⇒ 不误判 ✓
+            if [ -n "${t_life}" ] && [ $(( $(date +%s) - t_life )) -gt "${LIFECYCLE_STALL_S}" ] \
+               && printf '%s' "${last_life}" | /bin/grep -qE '(Configuring|Activating) '; then
+                READY_RC=126
+                log "★★ **早识别②（lifecycle 停住）** ✓：最后一条 lifecycle 行距今 $(( $(date +%s) - t_life ))s > ${LIFECYCLE_STALL_S}s ⇒ 判**未就绪** ✗"
+                log "   ★ 最后那条是：$(printf '%s' "${last_life}" | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-160)"
+                log "   ★ 共 ${n_life} 行 lifecycle ⇒ ★ 卡在服务调用上（既不回、也不超时）⇒ nav2 不会激活 ✗"
+                log "   ★ 没等满 300 s ✓：从开始等到这里只用了 $(( $(date +%s) - T_WAIT0 ))s"
+                printf '%s' "$(( $(date +%s) - t_life ))" > "/tmp/lifecycle_stall_${RUN_ID}"
+                cexec "pkill -f '[w]ait_ready\.py' >/dev/null 2>&1 || true" >/dev/null 2>&1 || true
+                break
+            fi
+        fi
+        n_abort="$(/bin/grep -c -F "${ABORT_PAT}" "${LAUNCH_LOG}" 2>/dev/null)"
+        if [ -n "${n_abort}" ] && [ "${n_abort}" != "0" ]; then
+            READY_RC=1
+            # ★ 那条日志行自带的 epoch 秒 ⇒ ★ 这才是"abort **那行**出现的时刻" ✓
+            t_abort="$(/bin/grep -m1 -F "${ABORT_PAT}" "${LAUNCH_LOG}" 2>/dev/null \
+                       | /bin/grep -oE '\[[0-9]{10}\.[0-9]+\]' | head -1 | tr -d '[]' | cut -d. -f1)"
+            t_now="$(date +%s)"
+            log "★★ **早识别** ✓：demo_launch.log 出现 'Aborting bringup'（${n_abort} 处 ✓）⇒ 判**未就绪** ✗"
+            log "   ★ 为什么这是硬失败 ✗：nav2 没激活 ⇒ 代价地图不发图 ∧ 桥的 server_is_ready() 恒 false ⇒ **车不动** ✓"
+            log "   ★ 没等满 300 s ✓：从开始等到这里只用了 $((t_now - T_WAIT0))s（waiter 已就地停掉 ✓）"
+            if [ -n "${t_abort}" ]; then
+                log "   ★ abort 那行自身的时刻 = ${t_abort} ⇒ 距「现在就重试」$((t_now - t_abort))s"
+                printf '%s' "$((t_now - t_abort))" > "/tmp/abort_to_retry_${RUN_ID}"
+            fi
+            # ★ 括号写法 ✓（✗ 不用裸 `wait_ready.py` ✗ —— 那条 bash 包装的命令行里也有这个串 ⇒ **自匹配** ✗，本仓记过）
+            cexec "pkill -f '[w]ait_ready\.py' >/dev/null 2>&1 || true" >/dev/null 2>&1 || true
+            break
+        fi
+        if [ $(( $(date +%s) - T_WAIT0 )) -gt 330 ]; then READY_RC=124; break; fi
+        sleep 0.5
+    done
     set -e
-    tail -2 "${READY_LOG}"
+    tail -2 "${READY_LOG}" 2>/dev/null || true
     if [ "${READY_RC}" -eq 0 ]; then
         log "定位链、相机/点云、危险距离与 nav2 两张图均已就绪（第 ${attempt} 次尝试）"
         break
@@ -219,8 +321,14 @@ NAV2_DIR="${PROJECT_DIR}/artifacts/rtk-nav2/${RUN_ID}/nav2"
 for n in /global_costmap/global_costmap /local_costmap/local_costmap /planner_server /controller_server; do
     safe="$(printf '%s' "${n}" | tr '/' '_')"
     tmp="$(mktemp)"
+    # ★★ 2026-10-14（步骤②）实测：★ 这里原来只写 `timeout 30` ✗ ⇒ **会永挂** ✗✗
+    #   ★ 实测：第 3 次连起时，本行在容器里挂了 **32 分钟** ✗ ——
+    #     `ros2 param dump` 是 **Python CLI** ✓，卡在 rclpy 里等一个不应答的服务调用时
+    #     **不回字节码层** ⇒ ★ **SIGTERM 被挂着不处理** ✗；而 `timeout` **默认只发 TERM、不发 KILL** ✗
+    #     ⇒ ★ 它自己也永远等下去 ⇒ ★ **起栈整条链就停在这儿** ✓（业主看到的"起栈卡住"✓）
+    #   ★ 修法 ✓：★ `timeout -k 5 30` ⇒ TERM 后 5 s 补 KILL ⇒ ★ 保证能死 ✓（最坏 35 s 返回 ✓）
     cexec "source /opt/ros/humble/setup.bash && source ${WS_DIR}/install/setup.bash && \
-           timeout 30 ros2 param dump ${n} 2>/dev/null" > "${tmp}" 2>/dev/null
+           timeout -k 5 30 ros2 param dump ${n} 2>/dev/null" > "${tmp}" 2>/dev/null
     if [ -s "${tmp}" ]; then
         {
             printf '# produced_by: ros2_param_dump_cli\n'
@@ -236,8 +344,9 @@ for n in /global_costmap/global_costmap /local_costmap/local_costmap /planner_se
     rm -f "${tmp}"
 done
 # 控制权归属证据（brief §10 裁定 2 的可核查判据）：/cmd_vel 的发布者必须只有 route_follower
+# ★ 同一族（2026-10-14 ✓）：★ 这条也补上 `-k 5` ✗ —— 理由与上面那条逐字相同 ✓
 cexec "source /opt/ros/humble/setup.bash && source ${WS_DIR}/install/setup.bash && \
-       timeout 30 ros2 topic info -v /cmd_vel 2>/dev/null" \
+       timeout -k 5 30 ros2 topic info -v /cmd_vel 2>/dev/null" \
     > "${NAV2_DIR}/cmd_vel_publishers.txt" 2>/dev/null
 set -e
 

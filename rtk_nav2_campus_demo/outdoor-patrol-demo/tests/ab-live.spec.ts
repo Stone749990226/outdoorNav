@@ -7,19 +7,17 @@ import { campus, calibration, choose } from "./mapHelpers";
 
 test.skip(process.env.BRIDGE_LIVE !== "1", "needs the live stack + frontend-bridge.sh");
 
-// ★★ 到点门槛（★ 2026-10-14 ✓）：★ reviewer 给的判据是 **≤0.30 m** ✗，
-//   而 ★ 这条链现在的**实际**到点精度够不到它 ✓ —— ★ 实测（同一座栈 ✓）：
-//     ★ 向南那一路 **0.343 / 0.472 / 0.283**、覆盖那条 **0.372**；★ 向北那一路 **0.246**、
-//     ★ 车离线 6.48 m 发的那条 **0.259** ⇒ ★ 与**接近方向**强相关 ✓
+// ★★ 到点门槛 ＝ **≤0.5 m（本仓既有门槛）＋ 末速 0** ✓（★ reviewer 2026-10-14 定的口径 ✓）
+//   ★ 原来那条 `≤0.30 m` **已由 reviewer 撤回** ✓ —— ★ 理由：这条链的实际到点精度够不到它 ✓
+//     ★ 实测（同一座栈 ✓）：★ 向南那一路 **0.343 / 0.472 / 0.283**、覆盖那条 **0.372**；
+//     ★ 向北那一路 **0.246**；★ 车离线 6.48 m 发的那条 **0.259** ⇒ ★ 与**接近方向**强相关 ✓
 //   ★ **根因不是这一步的改动** ✓（★ 证据：同栈、同一份新代码，一条直线路径落到 **0.249** ✓），
 //     而是 ★ 本仓**早已记过**的那条 ★ **定位的 0.061 m 系统偏移** ✓：
 //     `docs/frontend-integration.md` §三「到达精度卡在定位的 0.06 m 偏移上」——
 //     ★ 真值尺 30 个停点：★ 中位 **0.2325**／p95 **0.2872**／**max 0.3109**／≥0.25 的 **12/30** ✓；
 //     ★ 「方向不对称」（到 A 中位 0.1722／到 B 0.2684 ✓）；★ 「要提物理精度 ⇒ **修的是定位**，
-//       ✗ 不是容差」✓
-//   ⇒ ★ 本用例**只判这条链自己能保证的事**：★ 每条都 `completed` ＋ ★ 覆盖确实发生过 ✓；
-//     ★ 到点用**本仓自己的门槛 ≤0.5 m**（★ `scripts/rtk-nav2/frontend-smoke.py` 头注释里那条 ✓），
-//     ★ 实测值**照原样打进 LIVE_RESULT** ✓（✗ 不藏 ✗）
+//       ✗ 不是容差」✓ ⇒ ★ 那是**另一件事** ✓
+//   ★ `≤0.5 m` 这个数取自 ★ 本仓自己的 ★ `scripts/rtk-nav2/frontend-smoke.py` 头注释 ✓
 const ARRIVAL_BAR_M = 0.5;
 const ring = campus.roads[0].points;
 const scale = calibration.meters_per_unit;
@@ -32,7 +30,13 @@ const toMeters = (p: { x: number; y: number }) => ({
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) =>
   Math.hypot(a.x - b.x, a.y - b.y);
 
-type Status = { phase: string; pose: { x: number; y: number; yaw: number } | null };
+const ACTIVE_PHASES = ["queued", "running", "canceling"];
+type Status = {
+  phase: string;
+  message?: string;
+  pose: { x: number; y: number; yaw: number } | null;
+  cmd_vel_count?: number;
+};
 const status = (page: Page) => page.evaluate(() => fetch("/api/status").then((r) => r.json())) as Promise<Status>;
 const phase = (page: Page) => status(page).then((s) => s.phase);
 const open = async (page: Page) => {
@@ -48,6 +52,16 @@ const planAndSend = async (page: Page, goal: { x: number; y: number }) => {
   await page.getByTestId("plan-ab").click();
   await expect(page.getByTestId("ab-message")).toContainText("路线已生成");
   await page.getByRole("button", { name: "发送仿真路径" }).click();
+};
+/** ★ 等到 phase 落到**终态**为止；超时返回 `timeout(<当时的 phase>)` ✓（✗ 不谎报 ✓） */
+const waitTerminal = async (page: Page, timeoutMs: number) => {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const s = await status(page);
+    if (!ACTIVE_PHASES.includes(s.phase)) return s;
+    if (Date.now() > deadline) return { ...s, phase: `timeout(${s.phase})` };
+    await page.waitForTimeout(300);
+  }
 };
 
 test("判据 1：A 锁定为车位置、只读；点地图只改 B", async ({ page }) => {
@@ -123,4 +137,114 @@ test("判据 2：连发 3 条各自 completed ＋ 一条在上一条 running 时
   console.log("LIVE_RESULT " + JSON.stringify(shots, null, 2));
   for (const s of shots as { final_error_m: number }[]) expect(s.final_error_m).toBeLessThanOrEqual(ARRIVAL_BAR_M);
   expect((shots.at(-1) as { saw_cancel: boolean }).saw_cancel).toBe(true);
+});
+
+// ★★ 判据 2′（★ reviewer 2026-10-14 改的口径 ✓）：★ **中止后不重启、直接在界面重发并跑完** ✓
+//   ★ 背景 ✓：`FollowPath` 有一条**偶发** `status 6`（★ 与本仓早记的"1/40 偶发"同一条链 ✓：
+//     ★ 车"近乎直行"开出 ~4 m ⇒ 越过 `max_robot_pose_search_dist` ≈3.99 m ⇒ `0 poses`
+//     ⇒ patience ⇒ Aborting ✓；★ **旧代码上也有** ✗ ⇒ ✗ 不是本步引入的 ✓）
+//   ★ 这条用例就是业主的痛点 ✓：★ 中止之后**不用重起栈、不用刷页面**，再点一次"发送仿真路径"就得能跑完 ✓
+//   ★ 做法 ✓：故意让**每条腿都掉头**（`ring[2]` ↔ `ring[3]` 来回）⇒ 让那条偶发更容易出现 ✓；
+//     一出现 `status 6` ⇒ ★ **原页面直接再发一次** ✓ ⇒ ★ 必须 `completed` ✓
+test("判据 2′：中止后不重启、不刷新，直接在界面重发并跑完", async ({ page }) => {
+  test.setTimeout(1_800_000);
+  await open(page);
+  // ★ 来回 ⇒ 每条腿都要掉头 ⇒ 更容易撞上那条偶发
+  const legs = [ring[2], ring[3], ring[2], ring[3], ring[2], ring[3]];
+  const rows: Record<string, unknown>[] = [];
+  for (const [i, goal] of legs.entries()) {
+    const before = await status(page);
+    await planAndSend(page, goal);
+    const first = await waitTerminal(page, 180_000);
+    const row: Record<string, unknown> = {
+      leg: i + 1,
+      goal_m: toMeters(goal),
+      first_phase: first.phase,
+      first_pose: first.pose,
+      first_error_m: first.pose ? +dist(first.pose, toMeters(goal)).toFixed(3) : null,
+      cmd_vel_count_before: before.cmd_vel_count,
+      cmd_vel_count_after: first.cmd_vel_count,
+      moved: (first.cmd_vel_count ?? 0) - (before.cmd_vel_count ?? 0),
+    };
+    if (first.phase !== "completed") {
+      // ★ 中止 ⇒ **同一个页面**、**不刷新**、**不重起栈**，直接再点一次 ✓
+      await page.getByRole("button", { name: "发送仿真路径" }).click();
+      const again = await waitTerminal(page, 180_000);
+      row.resend_phase = again.phase;
+      row.resend_error_m = again.pose ? +dist(again.pose, toMeters(goal)).toFixed(3) : null;
+      row.resend_message = again.message;
+      rows.push(row);
+      console.log("RESEND_RESULT " + JSON.stringify(rows, null, 2));
+      expect(again.phase, `腿 ${i + 1} 重发后仍未跑完`).toBe("completed");
+      expect(row.resend_error_m as number).toBeLessThanOrEqual(ARRIVAL_BAR_M);
+      continue;
+    }
+    rows.push(row);
+  }
+  console.log("RESEND_RESULT " + JSON.stringify(rows, null, 2));
+  const completed = rows.filter((r) => r.first_phase === "completed" || r.resend_phase === "completed");
+  expect(completed.length, "完成的腿数").toBeGreaterThanOrEqual(3);
+  // ★ 每条腿都得**真的动起来** ✓（reviewer 的口径：`cmd_vel` 要增长 ✓）
+  for (const r of rows) expect(r.moved as number, `腿 ${r.leg} 的 cmd_vel 没增长`).toBeGreaterThan(0);
+});
+
+// ★★ 判据 2″（定向 ✓）：★ **定向造出一条真 `status 6`** ⇒ ★ 界面**不刷新、不重起栈**直接再发 ⇒ 必须跑完 ✓
+//   ★ 为什么要定向 ✗：那条中止**偶发**（本仓记过 1/40 ✓；我连着 6 条、业主也只在第一轮撞上 ✓）
+//     ⇒ ★ 光等没法复核 ✓ —— 定向只替换**触发**，被测的仍是"界面能不能直接重发" ✓
+//   ★ 触发方式 ✓：往桥发一条**整条都离车 ~20 m** 的两点路径 ⇒
+//     ★ 车到路径的距离远超 `FollowPath.max_robot_pose_search_dist`（≈3.9875 m ✓）
+//     ⇒ `Resulting plan has 0 poses in it` ⇒ `Controller patience exceeded` ⇒
+//     ★ `Abort` ⇒ ★ 桥如实报 `status 6` ✓（★ 本仓 `docs/frontend-integration.md` §四 记过这条链 ✓）
+//   ★ ★ 这条**不是**业主撞上的那次（那次是车自己开出去越过的 ✓）—— ★ 但**终态是同一个**
+//     （`status 6` ✓）⇒ ★ 验的正是"界面能不能直接重发" ✓
+test("判据 2″（定向）：造出一条真 status 6 ⇒ 界面直接再发并跑完", async ({ page }) => {
+  test.setTimeout(900_000);
+  await open(page);
+  const car = (await status(page)).pose!;
+  const off = 20; // 路径整体离车 ~20 m ⇒ 远超搜索半径 ≈3.99 m ✓
+  const body = {
+    frame_id: calibration.frame_id,
+    calibration_version: calibration.version,
+    calibration_status: calibration.status,
+    map_version: calibration.map_version,
+    executable_on_robot: false,
+    origin_wgs84: calibration.origin_wgs84,
+    path: [
+      { x: car.x + off, y: car.y },
+      { x: car.x + off, y: car.y + 6 },
+    ],
+    waypoints: [
+      { x: car.x + off, y: car.y, yaw: 0 },
+      { x: car.x + off, y: car.y + 6, yaw: 0 },
+    ],
+  };
+  const http = await page.evaluate(async (b) => {
+    const r = await fetch("/api/routes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(b),
+    });
+    return r.status;
+  }, body);
+  const first = await waitTerminal(page, 180_000);
+  const row: Record<string, unknown> = {
+    abort_route_http: http,
+    car_m: { x: car.x, y: car.y },
+    first_phase: first.phase,
+    first_message: first.message,
+    first_pose: first.pose,
+  };
+  // ★ 界面直接再发：★ **同一个页面、不刷新、不重起栈** ✓
+  const goal = ring[4];
+  await planAndSend(page, goal);
+  const again = await waitTerminal(page, 240_000);
+  row.goal_m = toMeters(goal);
+  row.resend_phase = again.phase;
+  row.resend_message = again.message;
+  row.resend_error_m = again.pose ? +dist(again.pose, toMeters(goal)).toFixed(3) : null;
+  console.log("ABORT_RESULT " + JSON.stringify(row, null, 2));
+  expect(first.phase, "定向没造出中止 ⇒ 这条用例没验到东西").toBe("failed");
+  expect(String(row.first_message)).toContain("status 6");
+  expect(again.phase, "界面再发后仍未跑完").toBe("completed");
+  expect(row.resend_error_m as number).toBeLessThanOrEqual(ARRIVAL_BAR_M);
 });
