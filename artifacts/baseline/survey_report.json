@@ -1,0 +1,137 @@
+{
+  "version": "survey-388df4ebbef8",
+  "parameters": {
+    "hampel_window": 11,
+    "hampel_min_threshold_m": 0.5,
+    "hampel_sigma": 3,
+    "max_speed_m_s": 3,
+    "max_gap_s": 2,
+    "stationary_duration_s": 10,
+    "stationary_radius_m": 0.5,
+    "smoothing_weights": [
+      1,
+      4,
+      6,
+      4,
+      1
+    ],
+    "max_smoothing_displacement_m": 0.3,
+    "turn_degrees": 25,
+    "resample_spacing_m": 0.5,
+    "preserve_resampled_turns": true,
+    "simplification_tolerance_m": 0.15,
+    "closure_limit_m": 2,
+    "junction_limit_m": 5
+  },
+  "logs": {
+    "loop": {
+      "source_log": "1.ubx",
+      "sha256": "6a4751ca14926325a62a3c2b5c06bae7e41f899bb994d6955f4bafe675158577",
+      "valid_nmea": 26196,
+      "bad_checksums": 0,
+      "gga_count": 2135,
+      "quality_counts": {
+        "2": 2135
+      },
+      "nav_pvt_count": 2134,
+      "carrier_counts": {
+        "0": 2134
+      },
+      "receiver_hacc_median_m": 0.36,
+      "time_rejected": [],
+      "rejected": [],
+      "gaps": [],
+      "stationary_segments": [
+        {
+          "from_utc": "030647.20",
+          "to_utc": "030701.40",
+          "count": 72,
+          "position": {
+            "x": -0.5380619526246447,
+            "y": 0.3319220237860878
+          }
+        },
+        {
+          "from_utc": "031323.20",
+          "to_utc": "031336.60",
+          "count": 68,
+          "position": {
+            "x": 0.004091420665253061,
+            "y": 0.006189472477217408
+          }
+        }
+      ],
+      "max_nonstationary_filter_shift_m": 0.1576383312867723,
+      "raw_polyline_length_m": 358.60484200312305,
+      "filtered_point_count": 1997
+    },
+    "branch": {
+      "source_log": "2.ubx",
+      "sha256": "e2e8fc8ab13bf75db8fc0032a6516d49f8a5b4ce0ebcb64c8ed62089d53f4677",
+      "valid_nmea": 4483,
+      "bad_checksums": 0,
+      "gga_count": 368,
+      "quality_counts": {
+        "2": 368
+      },
+      "nav_pvt_count": 368,
+      "carrier_counts": {
+        "0": 368
+      },
+      "receiver_hacc_median_m": 0.385,
+      "time_rejected": [],
+      "rejected": [],
+      "gaps": [],
+      "stationary_segments": [
+        {
+          "from_utc": "031632.20",
+          "to_utc": "031653.60",
+          "count": 108,
+          "position": {
+            "x": 9.143282664944183,
+            "y": -88.46751975843948
+          }
+        },
+        {
+          "from_utc": "031731.60",
+          "to_utc": "031745.60",
+          "count": 71,
+          "position": {
+            "x": 33.23886334937427,
+            "y": -65.65774220140388
+          }
+        }
+      ],
+      "max_nonstationary_filter_shift_m": 0.04596362686400764,
+      "raw_polyline_length_m": 36.35896597179773,
+      "filtered_point_count": 191
+    }
+  },
+  "joins": {
+    "closure": {
+      "point": {
+        "x": -0.442373645505109,
+        "y": -0.15091718521521144
+      },
+      "distance_m": 0.47330070483973696,
+      "segment": 88,
+      "offset_m": 10.887416725999762
+    },
+    "junction": {
+      "point": {
+        "x": 35.26058129018964,
+        "y": -63.467803554493415
+      },
+      "distance_m": 2.9804655189159246,
+      "segment": 464,
+      "offset_m": 76.77359212699454,
+      "confirmed_by_user": true
+    },
+    "loop_trim_before_utc": "030701.80",
+    "closure_adjustment": "local_seam_only",
+    "junction_adjustment": "confirmed_terminal_connection"
+  },
+  "quality_status": "survey_dgps_unverified",
+  "absolute_accuracy_verified": false,
+  "simulation_map": "uniform_free_space_for_controller_testing_only"
+}

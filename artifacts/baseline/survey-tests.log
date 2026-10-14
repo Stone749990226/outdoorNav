@@ -1,0 +1,15 @@
+test_actual_logs_form_one_loop_and_one_confirmed_branch (test_build_survey_map.SurveyMapTests.test_actual_logs_form_one_loop_and_one_confirmed_branch) ... ok
+test_isolated_spike_is_rejected_without_breaking_valid_motion (test_build_survey_map.SurveyMapTests.test_isolated_spike_is_rejected_without_breaking_valid_motion) ... ok
+test_missing_data_and_persistent_jump_remain_separate (test_build_survey_map.SurveyMapTests.test_missing_data_and_persistent_jump_remain_separate) ... ok
+test_stops_are_compressed_and_corner_geometry_is_preserved (test_build_survey_map.SurveyMapTests.test_stops_are_compressed_and_corner_geometry_is_preserved) ... ok
+test_time_order_midnight_and_duplicate_handling (test_build_survey_map.SurveyMapTests.test_time_order_midnight_and_duplicate_handling) ... ok
+test_unusable_quality_does_not_create_even_a_short_connection (test_build_survey_map.SurveyMapTests.test_unusable_quality_does_not_create_even_a_short_connection) ... ok
+test_checksum_rejects_corruption (test_prepare_demo.PrepareDemoTests.test_checksum_rejects_corruption) ... ok
+test_real_log_quality_and_jump (test_prepare_demo.PrepareDemoTests.test_real_log_quality_and_jump) ... ok
+test_two_anchor_fit_is_provisional (test_prepare_demo.PrepareDemoTests.test_two_anchor_fit_is_provisional) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 2.240s
+
+OK
+
