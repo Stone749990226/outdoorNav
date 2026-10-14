@@ -26,12 +26,12 @@ Robonix 的 RTK + nav2 演示：Gazebo Sim（Fortress）里跑一个**校园场�
 ## 2) 构建镜像（★ 路径就这一条：**自己 build**，不用 registry ✓）
 ```bash
 cd <本仓库根目录>
-GAZEBO_ROUTE=fortress IMAGE_NAME=robinox/rtk-nav2-demo:humble-amd64 bash scripts/build-image.sh
+GAZEBO_ROUTE=fortress IMAGE_NAME=robonix/rtk-nav2-demo:humble-amd64 bash scripts/build-image.sh
 # ★★ `IMAGE_NAME=` **不能省** ✗：build-image.sh 自己的默认是 `robinox/slam-demo:humble-amd64`
-#   （scripts/lib.sh:35），而演示脚本找的是 `robinox/rtk-nav2-demo:humble-amd64`
+#   （scripts/lib.sh:35），而演示脚本找的是 `robonix/rtk-nav2-demo:humble-amd64`
 #   （scripts/rtk-nav2/lib.sh:23）⇒ ★ 不传 ⇒ **建成别的名字 ⇒ 构建成功但演示起不来** ✗
 # ★ 构建后**当场自检**（建成了别的名字立刻暴露 ✓，✗ 别等到起栈才发现）：
-docker image inspect robinox/rtk-nav2-demo:humble-amd64 >/dev/null && echo "★ 镜像在 ✓"
+docker image inspect robonix/rtk-nav2-demo:humble-amd64 >/dev/null && echo "★ 镜像在 ✓"
 ```
 - ★ **用哪一份 Dockerfile 是坐实的** ✓：`scripts/build-image.sh` 按 **Gazebo 路线**（不是架构）选 ✓，
   `GAZEBO_ROUTE` 默认就是 `fortress` ✓ ⇒ 本版 = **`docker/Dockerfile.amd64`** ✓。

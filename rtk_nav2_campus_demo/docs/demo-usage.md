@@ -3,15 +3,15 @@
 ## 怎么用（三个终端）
 ```bash
 # ① 起栈（长驻前台，别关窗口；★ 实测 75 s 出「起栈返回 rc=0」✓，容器内就绪闸自报 28.2 s ✓）
-cd /mnt/c/Users/xjy/projects/robonix
+cd <本子树根目录>   # 含 scripts/ 与 docker/ 的那一层
 bash scripts/rtk-nav2/demo-start.sh
 
 # ② 走航线（另开一个终端；跑完整条航线，中途会打印「到达 x/41」）
-cd /mnt/c/Users/xjy/projects/robonix
+cd <本子树根目录>   # 含 scripts/ 与 docker/ 的那一层
 bash scripts/rtk-nav2/demo-drive.sh
 
 # ③ 停栈（走完再跑；判据＝容器内相关进程数 = 0）
-cd /mnt/c/Users/xjy/projects/robonix
+cd <本子树根目录>   # 含 scripts/ 与 docker/ 的那一层
 bash scripts/rtk-nav2/demo-stop.sh
 ```
 ★ 都**不带任何参数** ✓：容器名／ROS 域／分区／轮名全部在脚本里钉死 ✓（容器 `rtknav2-demo` ✓、域 56 ✓、轮名 `demo` ✓）；输入固定在 `scripts/rtk-nav2/demo-data/` ✓（✗ 不拷文件 ✓）；产物固定写 `artifacts/rtk-nav2/demo/` ✓（✗ 不分目录 ✓）。
