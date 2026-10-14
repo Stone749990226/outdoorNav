@@ -7,6 +7,14 @@
 ```bash
 GAZEBO_ROUTE=fortress IMAGE_NAME=robinox/rtk-nav2-demo:humble-amd64 bash scripts/build-image.sh
 ```
+
+★★ **补注（2026-10-14 加 ✓）：★ 上面这条命令里的 `IMAGE_NAME=robinox/rtk-nav2-demo:…` 是**当时拼错的名字** ✗**
+- ★ 本机确实建出过 `robinox/rtk-nav2-demo:verify` ✓（`docker images` 里可见 ✓）⇒ ★ 本节下面的记录**都是真的** ✓
+- ★ ★ **正确的名字以 `README.md` 的「0) 先把镜像拿到手」为准** ✓ ＝
+  **`robonix/rtk-nav2-demo:humble-amd64`** ✓（`robonix` ✓，✗ 不是 `robinox` ✗）
+  ★ 依据：`scripts/rtk-nav2/lib.sh:23` 的默认就是它 ✓
+- ★ 本节其余记录（耗时／体积／包数／`diff`）**不受影响** ✓ —— 它们量的是**镜像内容** ✓，✗ 与 tag 叫什么都不相干 ✓
+
 | 项 | 实测值 |
 |---|---|
 | ★ 起点 | 干净检出、提交 **`73da6a5`** ✓（★ 也就是**初版** ✓，其 `Dockerfile.amd64` ＝ **`0d3c6187bb6199fa`** ✓ —— ★ 即 §3(a) 里那个**只装 `nav2-map-server`** 的版本 ✓）<br>★ 注意 ✗：**本节的 19 min／5.65 GB 都属于补 nav2 之前那一次** ✓；**补全之后**在提交 **`57b3071`** 上的重建 ⇒ ★ 见 **§6**（**25 min 39 s** ✓／**6.04 GB** ✓／**1813** 包 ✓） |
@@ -71,6 +79,8 @@ GAZEBO_ROUTE=fortress IMAGE_NAME=robinox/rtk-nav2-demo:humble-amd64 bash scripts
   ⇒ ★ 即"`apt` 不钉版 ⇒ 建出来的可能比参照机**新**"这条风险 ✓ ★ **今天没有发生** ✓ —— ★ 差的全是**整包缺**（少 2 个 ✓），✗ 没有**同包不同版** ✓。
 
 ★ 构建 ✓：`Successfully built 214feabf16a3` ✓／`Successfully tagged robinox/rtk-nav2-demo:verify` ✓；
+★ ★ **补注（2026-10-14 加 ✓）**：★ 这个 `robinox/rtk-nav2-demo:verify` **就是当时那个拼错的 tag ✓**
+（★ `docker images` 里现在还看得到它 ✓ ⇒ ★ 记录本身**没写错** ✓）；★ **该用的名字见 §1 的补注** ✓。
 ★ **耗时 25 min 39 s** ✓（★ 取**阶段时间戳** `17:22:05 → 17:47:44` ✓ —— ✗ 别取构建日志首末行 ✓，那两行不是时间戳 ✗）；镜像 **6.04 GB** ✓（`docker images` 口径 ✓）。
 
 ### 差的那 2 个：`ros-humble-topic-tools` 与 `ros-humble-topic-tools-interfaces`
