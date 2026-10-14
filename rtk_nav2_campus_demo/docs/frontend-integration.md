@@ -1,27 +1,27 @@
-# ★ 接入他们的前端页面 —— 实现与实测记录
+# ★ 接入该仓的前端页面 —— 实现与实测记录
 
 ★ 业主口径（原话）✓：**"我在前端选择目标点（起始点就是小车位置），点规划路径后，仿真环境里的小车可以沿着中间点走到目标点"** ⇒ ★ 交付为新 commit ✓
 ★ 只读侦察见 `docs/frontend-integration-recon.md` ✓（接口、坐标系、那条唯一的变换都在那里 ✓）
-★ 边界 ✓：★ ✗ 不改他们仓库一行 ✓、★ ✗ 不动 `/home/xjy/projects/outdoorNav`（活挂载源 ✓）、★ ✗ 不推任何远端 ✓
+★ 边界 ✓：★ ✗ 不改该仓库一行 ✓、★ ✗ 不动 `/home/xjy/projects/outdoorNav`（活挂载源 ✓）、★ ✗ 不推任何远端 ✓
 
 ## 一、怎么接的（✗ 只加不改 ✓）
 
-★ 他们的链里，**车**要提供两样 ✓：★ **收 `/cmd_vel`** ✓（★ 我们现有链已有 ✓）＋ ★ **发 `/odom`** ✓
-★ 而 `bridge.py:125–129` **原样**取 `/odom` 的 `pose.pose.position` 当 ★ **frame `map` 的米值** ✓（★ 一个字的变换都不做 ✗）；★ 他们的 `sim.launch.py:34` 又是静态 `map→odom`（identity ✓）⇒ ★ 在他们的约定里 **`map` ≡ `odom`** ✓
+★ 该仓的链里，**车**要提供两样 ✓：★ **收 `/cmd_vel`** ✓（★ 本演示的链已有 ✓）＋ ★ **发 `/odom`** ✓
+★ 而 `bridge.py:125–129` **原样**取 `/odom` 的 `pose.pose.position` 当 ★ **frame `map` 的米值** ✓（★ 一个字的变换都不做 ✗）；★ 该仓的 `sim.launch.py:34` 又是静态 `map→odom`（identity ✓）⇒ ★ 在该仓的约定里 **`map` ≡ `odom`** ✓
 
 | 加的东西 | 干什么 | 关键点 |
 |---|---|---|
-| ★ `scripts/rtk-nav2/container/frontend_adapter.py` | ★ 发 `/odom`（★ 用我们 TF 里 `map→base_link` 的米值 ✓、✗ 不做变换 ✓）＋ ★ **吞掉 `/outdoor_nav/sim_reset`** ✓ | ★ 业主口径"起始点就是小车位置" ⇒ ★ **绝不让车被瞬移** ✗ |
-| ★ `scripts/rtk-nav2/frontend-bridge.sh` | ★ 起适配器 ＋ 起**他们的桥** ✓ | ★ 见下面那条参数 ✓ |
-| ★ `rtk_nav2_ws/src/robonix_rtk_nav2/config/campus_nav2.yaml` | ★ 加一个**同名同参数**的 `goal_checker` ✓ | ★ 他们 `bridge.py:214` **硬写** `goal_checker_id="goal_checker"` ✓，★ 本仓只有 `general_goal_checker` ⇒ ★ 不改他们一行就只能**加个名字** ✓（★ nav2 是"任一 goal checker 判到达即停" ⇒ ★ 参数一字不差 ⇒ **行为等价** ✓） |
+| ★ `scripts/rtk-nav2/container/frontend_adapter.py` | ★ 发 `/odom`（★ 用本演示 TF 里 `map→base_link` 的米值 ✓、✗ 不做变换 ✓）＋ ★ **吞掉 `/outdoor_nav/sim_reset`** ✓ | ★ 业主口径"起始点就是小车位置" ⇒ ★ **绝不让车被瞬移** ✗ |
+| ★ `scripts/rtk-nav2/frontend-bridge.sh` | ★ 起适配器 ＋ 起**该仓的桥** ✓ | ★ 见下面那条参数 ✓ |
+| ★ `rtk_nav2_ws/src/robonix_rtk_nav2/config/campus_nav2.yaml` | ★ 加一个**同名同参数**的 `goal_checker` ✓ | ★ 该仓 `bridge.py:214` **硬写** `goal_checker_id="goal_checker"` ✓，★ 本仓只有 `general_goal_checker` ⇒ ★ 不改该仓一行就只能**加个名字** ✓（★ nav2 是"任一 goal checker 判到达即停" ⇒ ★ 参数一字不差 ⇒ **行为等价** ✓） |
 
-### ★★ 那一条**参数** ＝ 根因的修法 ✓（★ 一行、✗ 不改他们代码 ✓）
-★ 他们的桥给**路径**打时间戳用的是**它自己的时钟** ✓，★ 默认**没开** `use_sim_time` ✗ ⇒ ★ 路径时间戳是**墙钟**（≈1.79e9 ✓）★ 而我们的栈跑在**仿真时间**上（几百秒 ✓）⇒ ★ 控制器报
+### ★★ 那一条**参数** ＝ 根因的修法 ✓（★ 一行、✗ 不改该仓代码 ✓）
+★ 该仓的桥给**路径**打时间戳用的是**它自己的时钟** ✓，★ 默认**没开** `use_sim_time` ✗ ⇒ ★ 路径时间戳是**墙钟**（≈1.79e9 ✓）★ 而本演示的栈跑在**仿真时间**上（几百秒 ✓）⇒ ★ 控制器报
 `[tf_help] Transform data too old when converting from map to odom`（Data time 1791812929 vs Transform time 2415）✗
 ⇒ ★ `Resulting plan has 0 poses in it` ✗ ⇒ ★ `FollowPath` **ABORTED** ✓
 ★ ★ ⇒ ★ 起桥时必须带 ★ **`--ros-args -p use_sim_time:=true`** ✓ ⇒ ★ 那两行错误 **0 次** ✓、★ 路径能在 **27 秒内走完** ✓
 
-## 二、实测（★ 走**他们那条链** ✓ —— ★ 前端 `POST /api/routes` ／ 桥 ／ nav2 ／ 车 ✓）
+## 二、实测（★ 走**该仓那条链** ✓ —— ★ 前端 `POST /api/routes` ／ 桥 ／ nav2 ／ 车 ✓）
 
 ★ ★ **端到端走通** ✓：★ 出生点 → `(3.4476, −11.7593)` ✓、★ **离目标 0.2398 m** ✓、★ **速度六项全 0** ✓
 
@@ -49,7 +49,7 @@
 ## 四、未定案：★ 40 遍里 1 次偶发失败（★ 触发条件**未复现** ✗）
 
 ★ **现象** ✓：★ 车从 A 出发**近乎直行**开出去 **4.09 m**（★ 实测曲率半径 **9.15 m** ✓）⇒ ★ 离路径首点 **4.09 m** ⇒ ★ 越过 `FollowPath.max_robot_pose_search_dist` ＝ **3.9875 m** ✓（★ 从局部代价地图尺寸推出 ✓，★ 具体公式**未坐实** ✗）⇒ ★ `transformGlobalPlan` 找不到点 ⇒ ★ 路径判空 ⇒ ★ `Resulting plan has 0 poses in it` ✓ ⇒ ★ 连续 **0.30011 s** 异常（＝ `failure_tolerance: 0.3` ✓）⇒ ★ `Controller patience exceeded` ⇒ ★ **ABORTED** ✓
-★ **已构造的定向用例复现不了** ✗：★ 路径与车头差 **180.0°**（★ 49 点／0.25 m 间距 ✓）、★ 走他们的桥 ✓ ⇒ ★ **4/4 全部 `completed`** ✓（★ 车**掉头成功** ✓，★ 转向时 `max|ω| ＝ 0.9304 rad/s` ✓、★ `linear.x` 328 拍里 327 拍非零 ✓）
+★ **已构造的定向用例复现不了** ✗：★ 路径与车头差 **180.0°**（★ 49 点／0.25 m 间距 ✓）、★ 走该仓的桥 ✓ ⇒ ★ **4/4 全部 `completed`** ✓（★ 车**掉头成功** ✓，★ 转向时 `max|ω| ＝ 0.9304 rad/s` ✓、★ `linear.x` 328 拍里 327 拍非零 ✓）
 ★ **已排除** ✗（★ 都用实测 ✓）：★ ① "**α≈180° ⇒ 直行**"（★ 定向用例 α 正好 180° 却掉头成功 ✓）★ ② "桥的车头与真车头不一致"（★ 实测差 **+0.17°** ✓）★ ③ "tf2 的 10 s 缓存过期"（★ 那个 `+10.0003 s` 的真解释是物理的：0.41 m/s × 10 s ≈ 4.09 m ✓）★ ④ "路径末点 ≠ 目标"（★ 实测差 **0.0000 m** ✓）
 ★ ★ ⇒ ★ **结论：机理链已量清（越过搜索半径 ⇒ 判空 ⇒ 中止），但"为什么那一次近乎直行"未定案** ✗ ⇒ ★ **✗ 不写"已修好"** ✗
 
@@ -69,15 +69,15 @@ Error: Will not support aliasing at line 400
 ★ ★ 定式 ✓：★ **判"某个消费者能不能接受"，必须用那个消费者自己的解析器／校验器** ✓ ✗（★ 不用同名的第三方库 ✗）—— ★ **工具同名 ≠ 实现同义** ✓
 ★ ★ ★ 并记一条 ✓：★ 那次用来做"回归附证"的 ★ **41/41 跑在一座锚点之前起的栈上** ✗（★ 栈 02:14 起、锚点 10:58 才落 ✓ ⇒ ★ 从没重读那个文件 ✓）⇒ ★ ★ **它证明的是"锚点之前那版参数"** ✓，★ ✗ 不能读成"带锚点也 41/41" ✗
 
-## 五、怎么跑（★ 走他们那条链 ✓ —— ★ **两条命令 ＋ 一个浏览器** ✓）
+## 五、怎么跑（★ 走该仓那条链 ✓ —— ★ **两条命令 ＋ 一个浏览器** ✓）
 
 ★ ★ **每条都从仓库根开始** ✓（★ 下面每条都写了 `cd` ✗ —— 光有 `bash …` 从别处粘会失败 ✗）；★ **①② 是长驻前台的 ⇒ 各开一个终端** ✗（★ 一条粘到底会**卡在①**、后面全不执行 ✗）。
 
 ```bash
-# ① 起我们的栈（★ 长驻前台 ⇒ **单独一个终端** ✓）
+# ① 起本演示的栈（★ 长驻前台 ⇒ **单独一个终端** ✓）
 cd /mnt/c/Users/xjy/projects/robonix && bash scripts/rtk-nav2/demo-start.sh
 
-# ② 起适配器 ＋ 他们的桥 ＋ **前端**（★ 长驻前台 ⇒ **再单独一个终端** ✓）
+# ② 起适配器 ＋ 该仓的桥 ＋ **前端**（★ 长驻前台 ⇒ **再单独一个终端** ✓）
 cd /mnt/c/Users/xjy/projects/robonix && bash scripts/rtk-nav2/frontend-bridge.sh
 
 # ③ 浏览器：http://localhost:5173 ⇒ A→B 工作区 ⇒ 点目标 ⇒ 「规划 A→B」⇒「发送仿真路径」
@@ -86,14 +86,14 @@ cd /mnt/c/Users/xjy/projects/robonix && bash scripts/rtk-nav2/frontend-bridge.sh
 
 ★★ ★ **前端在**容器里**跑** ✓（★ 2026-10-13 起 ✓ —— ★ 业主口径："**怎么还要在 windows 和 wsl 之间切换**"✗）：
 ★ 为什么必须搬进容器 ✓：★ 宿主 WSL 里 ★ **没有可用的 node** ✗（★ 实测：`node` 不在 PATH ✓、`npm` 只是 Windows 的 shim ✓、★ 而那个 `node.exe` 从 WSL 调 **`Permission denied (os error 13)`** ✗）；★ 而容器是 ★ **`--network host`** ✓ ⇒ ★ 它绑的是**宿主**的 `0.0.0.0:5173` ✓ ⇒ ★ 两侧都能开 ✓（★ Windows→WSL 的转发实测过 ✓）
-★ ★ 前端从哪来 ✓：★ 源码在仓里的 ★ `outdoor-patrol-demo/` ✓（★ 按**他们的原路径** ✓ ⇒ ★ 并入之后是**同一份** ✗ 不是第二份 ✗）；★ `docker/Dockerfile.amd64` **构建时**已 `npm ci` ✓（★ 仓里有 `package-lock.json` ✓ ⇒ lock 才可复现 ✓）
+★ ★ 前端从哪来 ✓：★ 源码在仓里的 ★ `outdoor-patrol-demo/` ✓（★ 按**该仓的原路径** ✓ ⇒ ★ 并入之后是**同一份** ✗ 不是第二份 ✗）；★ `docker/Dockerfile.amd64` **构建时**已 `npm ci` ✓（★ 仓里有 `package-lock.json` ✓ ⇒ lock 才可复现 ✓）
 ★ ★ ★ ✗ **镜像没带前端 ⇒ `frontend-bridge.sh` 会报错停** ✗、★ 并印出重建镜像的命令 ✓（✗ 不"发起即报成功" ✗）
 
-★ ★ **② 的前提：他们的桥得先在树里构建过** ✗（★ 2026-10-13 更正 ✓ —— ★ 我原来写"镜像里已有" ✗，★ **实测不成立** ✓）：
+★ ★ **② 的前提：该仓的桥得先在树里构建过** ✗（★ 2026-10-13 更正 ✓ —— ★ 我原来写"镜像里已有" ✗，★ **实测不成立** ✓）：
 ★ 实测 ✓：★ **交付主树里没有 `.external`** ✗ ∧ ★ **两个镜像里也都没有** ✗ ⇒ ★ 走到 ② 会 ★ **报错停** ✓（★ 设计如此 ✓ ✗ 不静默错 ✓）
-★ ★ ★ **② 之前要做的一步** ✓：★ 把他们的 `ros2_bridge` 放到 ★ `<仓库>/.external/their_bridge` ✓ ⇒ ★ 再按 `frontend-bridge.sh` **印出来的那条命令**构建 ✓
-　★ ★ **怎么拿那份源码** ✓：★ 他们仓里就有 ★ `ros2_bridge/` ✓（★ 现在在 `/home/xjy/projects/outdoorNav/ros2_bridge` ✓）⇒ ★ `cp -a` 过去 ✓
-　★ ★ ★ **并入他们仓库之后** ✓：★ 那份**本来就在仓里** ✓ ⇒ ★ 到时应当 ★ **让脚本直接指仓里那一份** ✗，★ 别在 `.external` 放第二份副本 ✗（★ 两份必然分叉 —— 本仓"两份一模一样＝即将不一样" ✓）
+★ ★ ★ **② 之前要做的一步** ✓：★ 把该仓的 `ros2_bridge` 放到 ★ `<仓库>/.external/their_bridge` ✓ ⇒ ★ 再按 `frontend-bridge.sh` **印出来的那条命令**构建 ✓
+　★ ★ **怎么拿那份源码** ✓：★ 该仓里就有 ★ `ros2_bridge/` ✓（★ 现在在 `/home/xjy/projects/outdoorNav/ros2_bridge` ✓）⇒ ★ `cp -a` 过去 ✓
+　★ ★ ★ **并入该仓库之后** ✓：★ 那份**本来就在仓里** ✓ ⇒ ★ 到时应当 ★ **让脚本直接指仓里那一份** ✗，★ 别在 `.external` 放第二份副本 ✗（★ 两份必然分叉 —— 本仓"两份一模一样＝即将不一样" ✓）
 　★ ★ 并给 `.external/` 补一条 **`.gitignore`** ✓（★ 已补 ✓ —— 否则 `git status` 变脏 ✗）
 
 ★ ★ ★ **若 5173 上已经有前端在跑** ✓（★ 例如 Windows 侧留了个旧的 ✓）⇒ ★ **不用再起** ✓ —— ★ 但 ★ **要按对的命名空间量** ✗：★ **WSL 的 `ss` 看不见 Windows 侧的监听** ✗（★ 实测：WSL 侧 `ss` 空 ✗ 而 Windows 侧 `Get-NetTCPConnection -LocalPort 5173` 看到 ✓ —— ★ 用 `ss` 判会得出**相反**的结论 ✓）

@@ -1,7 +1,8 @@
 # RTK ＋ Nav2 校园导航演示（`rtk_nav2_campus_demo/`）
 
-在 Gazebo Sim（Fortress）里跑一个**校园场景**（`north_campus`）：车按**经纬度航线**走 41 个点，
-边跑边建图。★ 验收看的是**图上干不干净** —— 车脚下与身后**不应出现成片障碍点**。
+在 Gazebo Sim（Fortress）里跑一个**校园场景**（`north_campus`）：★ **车由前端发来的目标点驱动** ✓ ——
+在页面上选终点、下发路径，nav2 控制器把车开过去；边跑边建图。
+★ 验收看的是**图上干不干净** —— 车脚下与身后**不应出现成片障碍点**。
 
 ★ 本子树里的东西 ✓：Dockerfile、脚本、固定输入、文档**都在里面** ✓。
 
@@ -9,16 +10,16 @@
 **它取自外层** ✓：`<本仓根>/gazebo_campus/generated/models/` ✓
 （起容器时 `scripts/rtk-nav2/lib.sh` 把它**只读挂进**容器 ✓，容器内路径 `/opt/rtk_nav2_external_models` ✓）。
 ⇒ ★ ★ **别把本子树单独拷走** ✗ —— ★ 拷走了**世界加载失败** ✓，而表相是「**看着像卡在起栈**」✗
-（★ 这个坑我们记过 ✓：`docs/delivery-ground-fix.md` 那族 ✓）。
+（★ 这个坑已记过 ✓：`docs/delivery-ground-fix.md` 那族 ✓）。
 
 ---
 
-## 一、怎么跑（★ 三步，但**前面还有第 0 步**）
+## 一、怎么跑（★ 四步）
 
 ### 0) 先把镜像拿到手（★ 这一步不能省 ✗）
 
 ★ 本演示用的镜像是 **`robonix/rtk-nav2-demo:humble-amd64`** ✓。
-★ **实情**：★ 它**只在我们那台机器上** ✗ —— **没有推到 registry**，也**没有导出 tar** ✓。
+★ **实情**：★ 它**目前只在开发机上** ✗ —— **未随交付提供** ✓（没有推到 registry ✓，也没有导出 tar ✓）。
 ⇒ ★ **必须自己 build 一次** ✓（首次约 **20 分钟**；构建期**要联网**拉 apt 与 ROS 包 ✓）。
 
 ```bash
@@ -44,33 +45,34 @@ docker image inspect robonix/rtk-nav2-demo:humble-amd64 >/dev/null && echo "★ 
 bash scripts/rtk-nav2/demo-start.sh
 ```
 
-### 2) 走航线（★ 另开一个终端）
+### 2) 起前端那条链（★ 必需 ✓ —— ★ 车就是由它驱动的 ✗）
 
 ```bash
-bash scripts/rtk-nav2/demo-drive.sh
+bash scripts/rtk-nav2/frontend-bridge.sh
 ```
 
-### 3) 停栈
+★ 它起三样 ✓：发 `/odom` 的适配器 ✓、**该仓 `ros2_bridge` 提供的 HTTP 桥**（`127.0.0.1:8765` ✓，
+★ 需先构建，见该脚本自己的提示 ✓）、前端 dev server ✓。
+★ `:5173` 上跑的就是本子树里的 `outdoor-patrol-demo/` ✓（脚本起前端**之前**会把它同步进容器
+并**逐文件比 sha256** ✓，不一致就报错停 ✓）。
+
+### 3) 在浏览器里选终点、下发路径（★ 车从这里开始动 ✓）
+
+打开 **`http://localhost:5173`** ⇒ 进「A→B 规划」页 ⇒
+**点地图选终点** ⇒ 按「**规划 A→B**」⇒ 按「**发送仿真路径**」✓。
+
+★ 起点 **A** 是**车当前的位置** ✓（页面自己从 `GET /api/status` 的 `pose` 取 ✓，并投影到路网中心线上 ✓）；
+★ 每次都同步刷新 ✓ —— ✗ 不需要手动设起点 ✗。
+★ 车在跑的时候再发一条新路线 ⇒ ★ **直接替换** ✓（先取消旧的、再发新的 ✓）。
+
+### 4) 停栈
 
 ```bash
 bash scripts/rtk-nav2/demo-stop.sh
 ```
 
-★ 三条命令**都零参数** ✓ —— 容器名／ROS 域／Gazebo 分区／轮名全部钉在脚本里 ✓；
-输入固定在 `scripts/rtk-nav2/demo-data/` ✓；产物固定写 `artifacts/rtk-nav2/demo/` ✓。
-★ ★ **走完别马上停** ✗ —— 走完那一刻 `demo-drive.sh` 会自动抓一张「走完之后」的全局图
-（会打印几行，含尺寸与值域自检 ✓）；★ **先看到那几行再停栈** ✓，否则那张凭证就没了 ✓。
-
-### 4)（可选）把前端那条链也开起来
-
-```bash
-bash scripts/rtk-nav2/frontend-bridge.sh
-# 起完浏览器开 http://localhost:5173
-```
-
-★ 它起三样：发 `/odom` 的适配器、**你们的** HTTP 桥（`127.0.0.1:8765`）、前端 dev server ✓。
-★ `:5173` 上跑的就是本子树里的 `outdoor-patrol-demo/` ✓（脚本起前端**之前**会把它同步进容器
-并**逐文件比 sha256** ✓，不一致就报错停 ✓）。
+★ 这一条同样**零参数** ✓ —— 容器名／ROS 域／Gazebo 分区／轮名全部钉在脚本里 ✓；
+★ 临时输入固定在 `scripts/rtk-nav2/demo-data/` ✓；产物固定写 `artifacts/rtk-nav2/demo/` ✓。
 
 ---
 
@@ -93,7 +95,6 @@ bash scripts/rtk-nav2/frontend-bridge.sh
 | [`docs/frontend-integration.md`](docs/frontend-integration.md) | 前端那条链（`POST /api/routes` → 桥 → nav2 → 车）＋ ★ 已知问题 ✓ |
 | [`docs/frontend-integration-recon.md`](docs/frontend-integration-recon.md) | 接前端之前做的只读侦察（接口与约定） |
 | [`docs/delivery-ground-fix.md`](docs/delivery-ground-fix.md) | 校园场景那处**地面物理／渲染对齐**的修复说明 |
-| [`docs/run-block-long.md`](docs/run-block-long.md) | 长跑（完整航线）那一版的跑法 |
 
 ★ 一句提醒 ✓：★ 本子树的**场景**与 `gazebo_campus/` 共用**同一份** ✓ ——
 ✗ 本子树里**没有**第二份 `campus_scene` ✗（两份会分叉 ✓）。

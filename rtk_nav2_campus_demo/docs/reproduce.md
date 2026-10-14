@@ -42,18 +42,20 @@ docker image inspect robonix/rtk-nav2-demo:humble-amd64 >/dev/null && echo "★ 
 - ★ 构建完会打印 `/build-info.txt`（构建记录 ✓）—— **请把它留档** ✓，它就是这台机器上这一版的凭据之一 ✓。
 
 ## 3) 跑起来（三条命令，零参数）
-> ★ 起栈与走航线是**长驻前台**命令 ⇒ **各开一个终端**，✗ 不要串在一条里 ✓。
+> ★ 起栈与**前端链**是**长驻前台**命令 ⇒ **各开一个终端**，✗ 不要串在一条里 ✓。
 
 ```bash
 # ── 终端 1：起栈（约 1–2 分钟，看到「起栈返回 rc=0」即可）
 cd <本仓库根目录>
 bash scripts/rtk-nav2/demo-start.sh
 
-# ── 终端 2：走航线（★ 等终端 1 打印 rc=0 之后再敲）
+# ── 终端 2：前端链（★ 必需 ✗ —— 车就是由它驱动的；等终端 1 打印 rc=0 之后再敲）
 cd <本仓库根目录>
-bash scripts/rtk-nav2/demo-drive.sh
+bash scripts/rtk-nav2/frontend-bridge.sh
+#   ⇒ 起完开浏览器 http://localhost:5173 ⇒「A→B 规划」⇒ 点地图选终点 ⇒
+#     「规划 A→B」⇒「发送仿真路径」（起点 A 由页面自动取车当前位置）
 
-# ── 走完之后：停栈（★ 先看到"抓图那几行"再停 ✗ —— 那是验收凭证）
+# ── 停栈
 cd <本仓库根目录>
 bash scripts/rtk-nav2/demo-stop.sh
 ```
@@ -71,10 +73,10 @@ bash scripts/rtk-nav2/demo-stop.sh
 | 锚 | 值 | 怎么取 |
 |---|---|---|
 | ★ **Dockerfile** | `docker/Dockerfile.amd64` ＝ **sha256 前 16：`6c9ae0cbe65df899`** ★（2026-10-12 更新：旧值 `0d3c6187bb6199fa` 那份**只装了 `nav2-map-server`** ⇒ 照旧锚重建**跑不了演示** ✗，已补全 nav2 栈 ✓） | `sha256sum docker/Dockerfile.amd64` |
-| 关键脚本 | `demo-start.sh` `dc3d90d6e7cdc22a`／`demo-drive.sh` `b879c9a4723190c5`／`demo-stop.sh` `3a4568a5b00f67bd` | `sha256sum scripts/rtk-nav2/demo-*.sh` |
+| 关键脚本 | `demo-start.sh` `dc3d90d6e7cdc22a`／`frontend-bridge.sh`（★ 当前流程用的 ✓）／`demo-stop.sh` `3a4568a5b00f67bd`；★ 另有 `demo-drive.sh` `b879c9a4723190c5` —— ★ **它不在当前演示流程里** ✓（旧：按固定 41 点航线走 ✓） | `sha256sum scripts/rtk-nav2/demo-*.sh` |
 | 场景/配置 | `campus_scene/model.sdf` `784e2ae135673aad`／`campus_nav2.yaml` `d01fd872f6b517d6`／`navsat.yaml` `b38894ee4f9897b1` | 见 `docs/image/` 与各文件 |
 | ★ **参照机的包版本** | `docs/image/dpkg-versions.txt`（1815 个包 ✓） | 构建出的镜像里 `dpkg-query -W` 对一遍 |
-| 参照机镜像 id | `sha256:9406e5268aa1b9f7…`（**仅供对照** ✗ —— 你们 build 出来必然是新 id ✓） | `docker image inspect` |
+| 参照机镜像 id | `sha256:9406e5268aa1b9f7…`（**仅供对照** ✗ —— 重新 build 出来必然是新 id ✓） | `docker image inspect` |
 
 ★ ★ **逐条对照建议** ✓：build 完在镜像里跑
 ```bash
@@ -88,12 +90,12 @@ diff /tmp/their-dpkg.txt docs/image/dpkg-versions.txt | head -50
 
 ## 6) 已知不保证（★ 如实列出 ✗）
 1. ★ **Dockerfile 里的 apt 安装没有钉版本** ✗（`apt-get install -y --no-install-recommends ignition-fortress ros-humble-… ` 全为浮动 ✓）
-   ⇒ ★ **今天重建，ROS 源上的包可能已经比我们这份新** ✗ ⇒ 效果大体一致，但**不是逐字节相同** ✓。
+   ⇒ ★ **今天重建，ROS 源上的包可能已经比这份参照新** ✗ ⇒ 效果大体一致，但**不是逐字节相同** ✓。
    - ★ 参照机上装到的版本已整份导出 ✓：`docs/image/dpkg-versions.txt` ⇒ **想严格对齐就照它钉** ✓
      （例：把 `ignition-fortress` 改成 `ignition-fortress=1.0.3-2~jammy`、`libignition-gazebo6-dev=6.18.0-1~jammy` ✓）
    - ★ **基础镜像这条对本版不适用** ✓：那条 `osrf/ros:humble-desktop-full` 链是 **Classic 路线**的 ✓；★ 本版走 **Fortress** ⇒ 直接落到 **`ubuntu:22.04`**（★ **固定 tag** ✓）⇒ ★ 这条**不构成"不保证"** ✓（对复现是好消息 ✓）。
 2. ★ 本文件里"构建"这一步的实测记录 ⇒ 见 **`docs/image/build-test.md`** ✓（★ 该文件已建 ✓：含一次真 build 的结果、耗时、磁盘与网络需求，以及**抓到的 nav2 缺口与已补** ✓）。
-3. ★ **在"他的机器上"我们验不了** ✗ ⇒ 第 4 节的判据请在那边自己看一遍 ✓。
+3. ★ **在别的机器上无法替对方验证** ✗ ⇒ 第 4 节的判据请在该机上自己看一遍 ✓。
 
 ---
 
@@ -118,7 +120,7 @@ tests/                              ★ 与演示同级的自检
 ---
 
 ## 8) ★ 一条硬警告：**不要重新生成场景** ✗
-本演示用的场景是 `campus_scene`（并入他们仓库后位于 `gazebo_campus/generated/models/campus_scene/` ✓）。
+本演示用的场景是 `campus_scene`（并入该仓库后位于 `gazebo_campus/generated/models/campus_scene/` ✓）。
 ★ 那个目录**能被一键重新生成** ✗ —— `gazebo_campus/build.sh` 会跑 `scripts/build_scene.py` ✓，
 而它写的是**修复前**的值（ground 的 z ＝ `-0.1` ✓）＋ **不发法线**（Fortress 里没法线的 mesh ⇒ 纯白不受光 ✗）。
 ⇒ ★ 重跑一次会**同时抹掉两处修复** ✗✗。
