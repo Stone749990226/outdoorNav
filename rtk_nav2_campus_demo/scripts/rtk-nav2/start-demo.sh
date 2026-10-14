@@ -124,8 +124,20 @@ else
 fi
 
 READY_RC=1
+LAST_ABORT_EPOCH=""   # ★ 形态①那条 abort 行的时刻 ✓（供"abort→重试开始"落产物 ✓）
 for attempt in 1 2 3; do
     log "启动第三阶段演示栈（第 ${attempt} 次尝试），run-id = ${RUN_ID}"
+    # ★★ 2026-10-14（reviewer 指出 ✓）：★ "abort 那行 → **本次起栈开始**" 这个**真判据值**要落产物 ✓
+    #   （✗ 原来只写宿主 /tmp ✗ ⇒ 不随产物留存 ✗ —— 第 1 轮那格"陈旧"就是它的表相 ✓）
+    if [ -n "${LAST_ABORT_EPOCH}" ] && [ "${attempt}" -gt 1 ]; then
+        _now="$(date +%s)"
+        _d="${PROJECT_DIR}/artifacts/rtk-nav2/${RUN_ID}/logs"
+        mkdir -p "${_d}"
+        printf 'abort_line_epoch=%s\nretry_start_epoch=%s\nabort_to_retry_s=%s\n' \
+            "${LAST_ABORT_EPOCH}" "${_now}" "$((_now - LAST_ABORT_EPOCH))" >> "${_d}/abort_to_retry.txt"
+        log "   ★ **abort 那行 → 本次起栈开始 = $((_now - LAST_ABORT_EPOCH))s** ✓（已落产物 ${_d##*/}/abort_to_retry.txt ✓）"
+        LAST_ABORT_EPOCH=""
+    fi
     # 清掉上次可能残留的 gz 传输文件：gz 被 SIGKILL 后留下的文件会让新实例起不来
     cexec "rm -rf /tmp/ign-* /tmp/gz-* /dev/shm/ign* /dev/shm/gz* 2>/dev/null; true"
     stop_stack_if_ours "${RUN_ID}"
@@ -201,7 +213,15 @@ for attempt in 1 2 3; do
     T_WAIT0="$(date +%s)"
     WAITER_OK=0
     while :; do
-        rc="$(tr -d '\r\n ' < "${READY_RC_HOST}" 2>/dev/null)"
+        # ★★ 2026-10-14（reviewer 指出 ✓）：★ 凭据文件**还没写出来**时，`< "${READY_RC_HOST}"`
+        #   会让 bash 每轮打一行 `…logs/ready_rc: No such file or directory` ✗
+        #   （实测一轮 **36 行** ✗）⇒ ★ 业主读起栈日志会**以为坏了** ✗ —— 功能不受影响 ✓，纯表相 ✗
+        #   ⇒ ★ 加一条 `[ -f ]` 守卫 ✓（✗ 不靠 `2>/dev/null` 的顺序 ✗ —— 那条依赖重定向求值次序 ✓，脆 ✓）
+        if [ -f "${READY_RC_HOST}" ]; then
+            rc="$(tr -d '\r\n ' < "${READY_RC_HOST}")"
+        else
+            rc=""
+        fi
         if [ -n "${rc}" ]; then READY_RC="${rc}"; break; fi
         # ★★ "waiter 到底起没起" —— ★ 2026-10-14 实测加的判据 ✓（✗ 不是想出来的 ✗）：
         #   第一版 waiter 写成 `set -u` ＋ `source /opt/ros/humble/setup.bash`
@@ -257,7 +277,16 @@ for attempt in 1 2 3; do
             log "   ★ 为什么这是硬失败 ✗：nav2 没激活 ⇒ 代价地图不发图 ∧ 桥的 server_is_ready() 恒 false ⇒ **车不动** ✓"
             log "   ★ 没等满 300 s ✓：从开始等到这里只用了 $((t_now - T_WAIT0))s（waiter 已就地停掉 ✓）"
             if [ -n "${t_abort}" ]; then
+                LAST_ABORT_EPOCH="${t_abort}"
                 log "   ★ abort 那行自身的时刻 = ${t_abort} ⇒ 距「现在就重试」$((t_now - t_abort))s"
+                # ★★ 2026-10-14（reviewer 指出 ✓）：★ 原来只写宿主 `/tmp` ✗ ⇒ ★ **不随产物留存** ✗
+                #   （第 1 轮那格"1s 陈旧"就是这条的表相 ✓）⇒ ★ 落进**本轮的产物目录** ✓
+                AR_D="${PROJECT_DIR}/artifacts/rtk-nav2/${RUN_ID}/logs"
+                mkdir -p "${AR_D}"
+                # ★ 名字要**说得准** ✗：这一段量的是"abort 行 → **判未就绪**"，✗ 不是"→ 重试开始" ✗
+                printf 'abort_line_epoch=%s\ndetected_epoch=%s\nabort_to_detect_s=%s\n' \
+                    "${t_abort}" "${t_now}" "$((t_now - t_abort))" > "${AR_D}/abort_to_retry.txt"
+                log "   ★ 已落产物：artifacts/rtk-nav2/${RUN_ID}/logs/abort_to_retry.txt（这一段是 abort→判未就绪 $((t_now - t_abort))s）"
                 printf '%s' "$((t_now - t_abort))" > "/tmp/abort_to_retry_${RUN_ID}"
             fi
             # ★ 括号写法 ✓（✗ 不用裸 `wait_ready.py` ✗ —— 那条 bash 包装的命令行里也有这个串 ⇒ **自匹配** ✗，本仓记过）
