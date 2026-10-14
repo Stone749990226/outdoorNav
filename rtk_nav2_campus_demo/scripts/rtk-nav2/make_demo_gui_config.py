@@ -35,6 +35,7 @@ BG_DEFAULT = '0.4911,0.6584,0.7835'
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--out', required=True)
+    ap.add_argument('--source', type=pathlib.Path, default=SRC)
     ap.add_argument('--camera', default='17.4 -44.3 110 0 0.75 1.5708')
     ap.add_argument('--fov', type=float, default=60.0)
     ap.add_argument('--bg', default=BG_DEFAULT)
@@ -45,11 +46,11 @@ def main():
     #   （★ 实测：`--camera 17.4 -122 78 0 0.785 1.5708` ⇒ `unrecognized arguments: -122 78 …` ✗）
     a.camera = ' '.join(a.camera.replace(',', ' ').split())
 
-    if not SRC.is_file():
-        print('✗ 找不到基线 %s' % SRC)
+    if not a.source.is_file():
+        print('✗ 找不到基线 %s' % a.source)
         return 2
-    s = SRC.read_text(encoding='utf-8')
-    print('基线 %s（%d B）' % (SRC, len(s.encode())))
+    s = a.source.read_text(encoding='utf-8')
+    print('基线 %s（%d B）' % (a.source, len(s.encode())))
 
     s = s.replace('<dialog name="quick_start" show_again="true"/>',
                   '<dialog name="quick_start" show_again="false"/>')
