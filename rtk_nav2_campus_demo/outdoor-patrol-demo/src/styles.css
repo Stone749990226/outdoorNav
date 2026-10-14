@@ -2056,6 +2056,27 @@ svg text {
 .endpoint-card svg {
   color: #9cb58b;
 }
+/* ★ 起点锁定时 A 卡片改成只读的 div（不是 button）⇒ 补齐 button 默认给的那几样 ✓ */
+.endpoint-card.locked {
+  display: flex;
+  align-items: center;
+  border-color: #a7da8640;
+  background: #a7da8608;
+}
+.endpoint-card.locked > i {
+  background: #7fb0a0;
+}
+.ab-a-source {
+  display: block;
+  margin: -2px 0 4px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #8ba18b;
+  flex-shrink: 0;
+}
+.ab-a-source.off-network {
+  color: #e6946c;
+}
 .swap-points {
   padding: 10px;
   font-size: 10px;

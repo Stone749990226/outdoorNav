@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { MapView, type Layers, type Mode } from "./MapView";
 import { snap } from "./planner";
-import { exportAB, planAB, type ABResult } from "./abNavigation";
+import { exportAB, planAB, withCarStart, type ABResult } from "./abNavigation";
 import { download, exportMap } from "./export";
 import { calibration, dist, home, mapToSvg, scale, toMeters, roads } from "./map";
 import { bridgeStatus, cancelSimulationRoute, sendSimulationRoute, type BridgeStatus } from "./rosBridge";
@@ -38,6 +38,17 @@ const coordinate = (p: Point | null) =>
   p
     ? `${toMeters(p).x.toFixed(2)}, ${toMeters(p).y.toFixed(2)}`
     : "点击地图选择";
+// ★★ 起点 A ＝ **小车当前位置**（业主口径 2026-10-14）✓
+//   ★ 来源：`GET /api/status` 的 `pose{x,y}`（**米**，frame `map` ✓）
+//     ⇒ `mapToSvg()` 投到图上的坐标 ✓ ⇒ `snap()` 投到实测中心线 ✓
+//   ★ 为什么必须这样：车的起始点由**车自己**决定（适配器吞掉 `/outdoor_nav/sim_reset`
+//     ⇒ 车不会被瞬移 ✓）⇒ ★ 若 A 由人手点，路径起点就不是车的地方 ⇒
+//     ★ 实测过：**路径不经过车（横向 2.91 m）⇒ nav2 中止（status 6）、车只挪 1.235 m** ✓
+//   ★ ★ **不设距离上限** ✗（reviewer 2026-10-14 更正 ✓）：A 一律取**离车最近的路网点** ✓；
+//     车离线那段由 `withCarStart()` 接在 `path`／`waypoints` **前面** ✓（见 abNavigation.ts ✓）
+const ACTIVE_PHASES = ["queued", "running", "canceling"] as const;
+const isActivePhase = (phase: string) =>
+  (ACTIVE_PHASES as readonly string[]).includes(phase);
 export function ABWorkspace() {
   const [a, setA] = useState<Point | null>(null),
     [b, setB] = useState<Point | null>(null);
@@ -53,6 +64,7 @@ export function ABWorkspace() {
     [bridgeError, setBridgeError] = useState("");
   const [preview, setPreview] = useState<Simulation | null>(null);
   const [busy, setBusy] = useState(false);
+  const [sending, setSending] = useState(false);
   const generation = useRef(0);
   useEffect(() => {
     let id: number,
@@ -93,6 +105,40 @@ export function ABWorkspace() {
       window.clearInterval(timer);
     };
   }, []);
+  // ★ A 的来源（★ 每次 1 s 轮询到的新 pose 都会重算 ✓）—— **两种形态** ✓：
+  //   ① pose 有 ⇒ **锁定**：A＝`snap(车位置)`（★ **不设距离上限** ✓），点地图只设 B ✓
+  //   ② pose 没有（桥没连／版本不一致）⇒ **离线兜底**：保留原来的手动选 A/B ✓
+  //      （★ 他们的 `tests/bridge.spec.ts` 有一条"未连桥也能规划/导出"的用例，就是走这条 ✓）
+  const compatibleBridge = bridge?.calibration_version === calibration.version;
+  const livePose =
+    compatibleBridge && bridge?.pose
+      ? mapToSvg({ x: bridge.pose.x, y: bridge.pose.y })
+      : null;
+  const poseSnap = livePose ? snap(livePose) : null;
+  const poseOffsetM = poseSnap ? poseSnap.distance * scale : null;
+  const aLocked = poseSnap !== null;
+  const aSource: "pose" | "offline" = aLocked ? "pose" : "offline";
+  useEffect(() => {
+    if (!aLocked || !poseSnap) return;
+    const next = poseSnap.point;
+    if (a && dist(a, next) < 1e-9) return;
+    generation.current++;
+    setA(next);
+    setSelection((s) => (s === "a" ? "b" : s));
+    // ★ 车动了 ⇒ A 跟着动 ⇒ 已生成的路线**就地按新 A 重算** ✓
+    //   ✗ **不清空** ✗ —— 清空会让"发送仿真路径"按钮变灰 ⇒ ★ 业主口径的
+    //   "车在跑时再发新路线 ⇒ 直接替换"就**没法从界面做** ✗（★ 覆盖那一路要的就是车在跑 ✓）
+    //   ★ 重算只是把起点换成车**此刻**的位置 ✓；`planAB` 不动 ✓
+    setResult((current) => {
+      if (!current?.plan || !b) return current;
+      try {
+        const refreshed = planAB(next, b, blocked);
+        return refreshed.error ? current : refreshed;
+      } catch {
+        return current;
+      }
+    });
+  }, [aLocked, poseSnap?.point.x, poseSnap?.point.y, a, b, blocked]);
   const invalidate = () => {
     generation.current++;
     setResult(null);
@@ -100,7 +146,10 @@ export function ABWorkspace() {
     setBusy(false);
   };
   const pick = (p: Point, tolerance: number) => {
-    if (!selection || blockMode) return;
+    if (blockMode) return;
+    // ★ A 锁定（车在路网上）⇒ 点地图**只设 B** ✓（起点由车决定，不可改 ✓）
+    const target: "a" | "b" | null = aLocked ? "b" : selection;
+    if (!target) return;
     const projected = snap(p);
     const open = projected && snap(projected.point, blocked);
     if (!projected || projected.distance > tolerance || !open || open.distance > 0.0001) {
@@ -108,14 +157,15 @@ export function ABWorkspace() {
       return;
     }
     invalidate();
-    if (selection === "a") {
+    if (target === "a") {
       setA(projected.point);
       setSelection("b");
       setMessage("A 点已投影到中心线。");
     } else {
       setB(projected.point);
-      setSelection(null);
-      setMessage("A/B 已投影到中心线。");
+      // ★ 锁定时保持 "b" ⇒ 可以连续点、反复改终点 ✓（离线兜底时与原来一致：设完变 null ✓）
+      setSelection(aLocked ? "b" : null);
+      setMessage(aLocked ? "B 点已投影到中心线（起点＝小车当前位置，已锁定）。" : "A/B 已投影到中心线。");
     }
   };
   const compute = () => {
@@ -150,10 +200,10 @@ export function ABWorkspace() {
   };
   const reset = () => {
     invalidate();
-    setA(null);
+    setA(null); // ★ 锁定时下一次轮询（≤1 s）会把它填回车位置 ✓
     setB(null);
     setBlocked([]);
-    setSelection("a");
+    setSelection(aLocked ? "b" : "a");
     setBlockMode(false);
     setMessage("等待选择 A/B");
   };
@@ -165,15 +215,56 @@ export function ABWorkspace() {
     setMessage("A/B 已交换，请重新规划。");
   };
   const valid = !!result?.plan;
-  const compatibleBridge = bridge?.calibration_version === calibration.version;
-  const bridgeActive = compatibleBridge && bridge && ["queued", "running", "canceling"].includes(bridge.phase);
+  const bridgeActive =
+    compatibleBridge && bridge !== null && isActivePhase(bridge.phase);
+  // ★ 覆盖式发送 ✓（业主口径：车在跑时再发新路线 ⇒ **直接替换**，✗ 不要 409 ✓）
+  //   ★ 做法选在**前端**（✗ 不在他们的 `bridge.py` ✗）—— 因为那份在 `.external/` 里，
+  //     ✗ 不进交付 ✗；改成"先 `/api/cancel`、等它到终态、再发新的"就全是本仓的代码 ✓
+  //   ★ 判据落在 **phase 上** ✓（✗ 不落在"我发过那条取消"✗ —— 那只是"发出信号"✓）
+  const replaceActiveRoute = async () => {
+    try {
+      setBridge(await cancelSimulationRoute());
+    } catch {
+      // 桥在 phase=canceling 时会对 /api/cancel 回 409 ⇒ 忽略，直接去等终态 ✓
+    }
+    const deadline = Date.now() + 15000;
+    for (;;) {
+      const status = await bridgeStatus();
+      setBridge(status);
+      if (!isActivePhase(status.phase)) return;
+      if (Date.now() > deadline)
+        throw new Error(`取消旧路线超时（phase=${status.phase}）`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+  };
   const sendToNav2 = async () => {
-    if (!a || !b || !result || !valid) return;
+    if (!a || !b || !valid || sending) return;
+    setSending(true);
     try {
       setBridgeError("");
-      setBridge(await sendSimulationRoute(exportAB(a, b, result)));
+      // ★ 发之前现取一次 pose：★ 路径起点必须是**车此刻**的位置 ✓
+      //   （覆盖那一路尤其要紧 —— 车在跑，1 s 轮询拿到的 A 可能已经落后好几米 ✓）
+      const latest = await bridgeStatus();
+      setBridge(latest);
+      const startSnap = latest.pose
+        ? snap(mapToSvg({ x: latest.pose.x, y: latest.pose.y }))
+        : null;
+      const start = startSnap ? startSnap.point : a;
+      const next = planAB(start, b, blocked);
+      if (next.error || !next.plan) throw new Error(next.error ?? "规划失败");
+      setA(start);
+      setResult(next);
+      setPreview(null);
+      // ★ 车离线 > 0.1 m ⇒ 把**车的真实位姿**接在 path／waypoints 最前面 ✓
+      //   （✗ 不接 ⇒ 车到路径最近点超过控制器的搜索窗口 ⇒ `0 poses` ⇒ 立刻中止 ✓）
+      const payload = withCarStart(exportAB(start, b, next), latest.pose ?? null);
+      // ★ 旧路线还在跑 ⇒ 先取消并等终态，再发新的 ✓（否则桥回 409 ✓）
+      if (isActivePhase(latest.phase)) await replaceActiveRoute();
+      setBridge(await sendSimulationRoute(payload));
     } catch (error) {
       setBridgeError(error instanceof Error ? error.message : "发送失败");
+    } finally {
+      setSending(false);
     }
   };
   const cancelNav2 = async () => {
@@ -286,22 +377,52 @@ export function ABWorkspace() {
           <p className="ab-description">
             智慧谷北区 · 环线与中央支路
           </p>
+          {aLocked ? (
+            <div
+              className="endpoint-card locked"
+              data-testid="select-a"
+              data-locked="true"
+            >
+              <i>A</i>
+              <span>
+                <strong>起点 · 小车当前位置（只读）</strong>
+                <small>{coordinate(a)}</small>
+              </span>
+              <LocateFixed size={15} />
+            </div>
+          ) : (
+            <button
+              className={`endpoint-card ${selection === "a" ? "selected" : ""}`}
+              data-testid="select-a"
+              data-locked="false"
+              onClick={() => {
+                setSelection("a");
+                setBlockMode(false);
+              }}
+            >
+              <i>A</i>
+              <span>
+                <strong>设置起点</strong>
+                <small>{coordinate(a)}</small>
+              </span>
+              <LocateFixed size={15} />
+            </button>
+          )}
+          <small className={`ab-a-source ${aSource}`} data-testid="a-source">
+            {aSource === "pose" &&
+              `起点＝小车当前位置在路网上的投影（离车 ${poseOffsetM!.toFixed(2)} m）` +
+                (poseOffsetM! > 0.1
+                  ? "；发路线时会先接一段「车 → 起点」的引导段"
+                  : "")}
+            {aSource === "offline" &&
+              "ROS2 桥接未连接 ⇒ 起点改用离线手动选点（兜底；发送仿真路径不可用）"}
+          </small>
           <button
-            className={`endpoint-card ${selection === "a" ? "selected" : ""}`}
-            data-testid="select-a"
-            onClick={() => {
-              setSelection("a");
-              setBlockMode(false);
-            }}
+            className="swap-points"
+            disabled={aLocked || !a || !b}
+            title={aLocked ? "起点锁定为小车当前位置，不能交换" : undefined}
+            onClick={swap}
           >
-            <i>A</i>
-            <span>
-              <strong>设置起点</strong>
-              <small>{coordinate(a)}</small>
-            </span>
-            <LocateFixed size={15} />
-          </button>
-          <button className="swap-points" disabled={!a || !b} onClick={swap}>
             <ArrowRightLeft size={13} />
             交换 A / B
           </button>
@@ -333,7 +454,16 @@ export function ABWorkspace() {
           <div className="ab-bridge">
             <span className="eyebrow">NAV2 / 仿真</span>
             <div className="ab-bridge-actions">
-              <button disabled={!valid || !compatibleBridge || !!bridgeActive || result!.plan!.length === 0} onClick={sendToNav2}>
+              <button
+                disabled={
+                  !valid ||
+                  !compatibleBridge ||
+                  sending ||
+                  result!.plan!.length === 0
+                }
+                title={bridgeActive ? "直接替换当前正在跑的路线" : undefined}
+                onClick={sendToNav2}
+              >
                 <Send size={14} />
                 发送仿真路径
               </button>
@@ -344,6 +474,8 @@ export function ABWorkspace() {
             <small role="status" data-testid="bridge-status">
               {bridgeError || (bridge ? !compatibleBridge ? "地图版本不一致，请更新 ROS2 地图并重启桥接" : bridge.message : "ROS2 桥接未连接")}
               {!bridgeError && compatibleBridge && bridge?.distance_remaining != null && <span style={{ whiteSpace: "nowrap" }}> · 剩余 {bridge.distance_remaining.toFixed(1)} m</span>}
+              {!bridgeError && bridgeActive && <span> · 再次发送将直接替换当前路线</span>}
+              {sending && <span> · 发送中…</span>}
             </small>
             {compatibleBridge && bridge?.pose && <small>仿真位置 {bridge.pose.x.toFixed(2)}, {bridge.pose.y.toFixed(2)} m</small>}
           </div>

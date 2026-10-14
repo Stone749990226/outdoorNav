@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { exportAB, planAB } from "./abNavigation";
-import { calibration, dist, home, presets, roads, scale, toGeoreferenced } from "./map";
+import { exportAB, planAB, withCarStart } from "./abNavigation";
+import { calibration, dist, home, presets, roads, scale, toGeoreferenced, toMeters } from "./map";
 import { snap } from "./planner";
 import { extractWaypoints, serializeWaypoints, waypointCSV } from "./waypoints";
 import { advance, initial } from "./simulation";
@@ -62,6 +62,27 @@ describe("measured route exports", () => {
     expect(data).not.toHaveProperty("road_width_m");
     expect(waypointCSV(serializeWaypoints(result.waypoints))).toContain("map");
     expect(() => exportAB(home, presets[2].point, planAB(home, presets[2].point, ["branch"]))).toThrow();
+  });
+  it("prepends the real car pose only when the car is off the route", () => {
+    const result = planAB(home, presets[2].point);
+    const route = exportAB(home, presets[2].point, result);
+    const start = toMeters(home);
+    // 车就在起点的投影上（<0.1 m）⇒ 原样返回，一个字段都不多
+    expect(withCarStart(route, { ...start, yaw: 0 })).toBe(route);
+    // 车离线 8.485 m ⇒ path/waypoints 前面各接一条，且 path[0]==waypoints[0]
+    const car = { x: start.x + 6, y: start.y + 6, yaw: 0.3 };
+    const lead = Math.hypot(6, 6);
+    const data = withCarStart(route, car);
+    expect(data.path).toHaveLength(route.path.length + 1);
+    expect(data.waypoints).toHaveLength(route.waypoints.length + 1);
+    expect(Math.abs(data.path[0].x - car.x)).toBeLessThan(1e-3);
+    expect(Math.abs(data.path[0].y - car.y)).toBeLessThan(1e-3);
+    expect(dist(data.path[0] as never, data.waypoints[0] as never)).toBeLessThan(0.01);
+    expect(data.path[1]).toEqual(route.path[0]);
+    expect(data.waypoints[0].yaw).toBeCloseTo(0.3);
+    expect(data.waypoints[1].sequence).toBe(2);
+    expect(data.length).toBeCloseTo(route.length + lead, 3);
+    expect(data.start).toEqual(route.start);
   });
   it("retains needed bends and keeps spacing below twenty meters", () => {
     const result = planAB(home, presets[2].point);

@@ -36,6 +36,11 @@
 #     ★ 找不着会**报错停**并把构建命令**原样印出来** ✓（✗ 不"发起即报成功" ✗）
 #   ★ ② ★ **前端**要**在镜像里** ✓：★ 源码在仓里的 `outdoor-patrol-demo/` ✓
 #     ⇒ ★ `docker/Dockerfile.amd64` **构建时**已 `npm ci` ✓ ⇒ ★ 镜像没带就**报错停** ✓
+#   ★ ③ ★★ **`:5173` 上跑的那份必须＝仓里那份** ✓（★ 2026-10-14 加 ✓）：
+#     ★ 镜像里那份是**构建时** `COPY` 的 ✓ ⇒ ★ 改完仓里的源码，跑的还是旧那份 ✗
+#     ★ 本脚本在起前端**之前**把仓里那份**镜像**过去 ＋ **两侧各算 sha256 清单比对** ✓
+#       ✗ 只碰源码 ✗（`node_modules` 是镜像里 `npm ci` 装的 ✓；`test-results/`／`dist/`／
+#       `*.tsbuildinfo` 是**生成物** ✓ 都不在比对集合里 ✓）
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TREE="$(cd "${HERE}/../.." && pwd)"
@@ -98,19 +103,91 @@ fi
 #   ★ 镜像里那份在哪 ✓：`/opt/outdoor-patrol-demo` ✓（★ `Dockerfile.amd64` **构建时**
 #     已 `npm ci` ✓ —— ★ 首次运行装会要联网 ＋ 多等几分钟 ⇒ ★ "一条命令"就不成立 ✗）
 #   ★ ★ ✗ **不在镜像里就报错停** ✗（✗ 不"发起即报成功" ✗ —— ★ 同一个坑本文件上面记过 ✓）
-FRONT_DIR="/opt/outdoor-patrol-demo"
+FRONT_DIR="/opt/outdoor-patrol-demo"   # ★ **服务出去的那份**（vite 的 cwd ✓）
+FRONT_SRC="/work/outdoor-patrol-demo"  # ★ **仓里那份**（bind mount ✓）
 if ! docker exec "${CONTAINER}" bash -lc "test -d ${FRONT_DIR}/node_modules"; then
     say "✗ 镜像里没有前端依赖：${FRONT_DIR}/node_modules ✗"
     say "  ⇒ ★ 这个镜像不是『带前端』的那版 ✓ ⇒ ★ 要重建镜像 ✓"
     say "  （★ 见 docs/frontend-integration.md §五 ✓；★ 构建命令：scripts/build-image.sh ✓）"
     exit 1
 fi
-if docker exec "${CONTAINER}" bash -lc 'pgrep -f "[v]ite" >/dev/null 2>&1'; then
-    say "  ★ 前端已在跑 ✓"
+
+# ── ③-前 ★★ 让 `:5173` 上的那份 **＝ 仓里那份** ✓（★ 2026-10-14 加 ✓）──
+#   ★ 为什么必须加 ✗：`/opt/outdoor-patrol-demo` 是**镜像构建时** `COPY` 进去的 ✓
+#     ⇒ ★ 改了仓里的 `outdoor-patrol-demo/` 之后，vite 跑的**还是旧那份** ✗
+#     ★ 而它**能正常打开** ✓ ⇒ ★ 表相与"新代码生效"**同形** ✓（★ "发出信号 ≠ 做成了" ✓）
+#   ★ 做法 ✓：起前端**之前**把仓里那份**镜像**到 `$FRONT_DIR`
+#     ✗ 不碰 `node_modules` ✗（★ 那是镜像里 `npm ci` 装的 ✓，来源是 `package-lock.json` ✓）
+#     ✗ 不碰 `test-results/` `dist/` `*.tsbuildinfo` ✗（★ 全是**生成物** ✓
+#       —— ★ 实测：我跑过一次 `tsc -b` ⇒ 那份多出一个 `tsconfig.tsbuildinfo` ⇒
+#         不排除就会把两侧判成"不一致" ✗）
+#   ★ ★ 判据落在**内容**上 ✓（✗ 不落在"我拷过了" ✗）：两侧各算一份 `sha256sum` 清单、
+#     按路径排序后**逐字节比**；不一致 ⇒ **报错停** ✓（✗ 不接着起前端 ✗）
+say "  ★ 让 :5173 服务的那份 ＝ 仓里那份（${FRONT_SRC} ⇒ ${FRONT_DIR}）"
+if ! docker exec -e FRONT_SRC="${FRONT_SRC}" -e FRONT_DIR="${FRONT_DIR}" -i "${CONTAINER}" bash -s <<'EOS'
+set -uo pipefail
+EXCL=(-path ./node_modules -o -path ./test-results -o -path ./playwright-report -o -path ./dist -o -name '*.tsbuildinfo')
+files() { ( cd "$1" && find . \( "${EXCL[@]}" \) -prune -o -type f -print | LC_ALL=C sort ); }
+manifest() { files "$1" | while IFS= read -r f; do printf '%s  %s\n' "$(sha256sum "$1/${f#./}" | cut -c1-64)" "$f"; done; }
+[ -d "$FRONT_SRC" ] || { echo "✗ 仓里那份不在：$FRONT_SRC ⇒ 容器挂的是这棵树吗"; exit 1; }
+
+before="$(manifest "$FRONT_DIR")"
+# ① 先删**目标侧多出来的**那些（★ 处置类动作：先把要删的清单打出来 ✓）
+files "$FRONT_SRC" > /tmp/front_src.list
+files "$FRONT_DIR" > /tmp/front_dst.list
+comm -13 /tmp/front_src.list /tmp/front_dst.list > /tmp/front_stale.list
+stale="$(wc -l < /tmp/front_stale.list)"
+echo "  ① 源 $(wc -l < /tmp/front_src.list) 个文件 ｜ 目标 $(wc -l < /tmp/front_dst.list) 个 ｜ 目标侧多出 $stale 个"
+if [ "$stale" != 0 ]; then sed 's/^/     将删: /' /tmp/front_stale.list; fi
+while IFS= read -r f; do [ -n "$f" ] && rm -f -- "$FRONT_DIR/${f#./}"; done < /tmp/front_stale.list
+# ② 再把仓里那份逐个拷过去（35 个文件，逐个拷＝看得见、出错就停 ✓）
+while IFS= read -r f; do
+    mkdir -p "$FRONT_DIR/$(dirname "$f")" || exit 1
+    cp -p "$FRONT_SRC/${f#./}" "$FRONT_DIR/${f#./}" || exit 1
+done < /tmp/front_src.list
+# ③ ★ 两侧各算哈希、逐字节比 ✓
+src_manifest="$(manifest "$FRONT_SRC")"
+dst_manifest="$(manifest "$FRONT_DIR")"
+if [ "$src_manifest" = "$dst_manifest" ]; then
+    echo "  ② 两侧 sha256 清单**逐字节相同** ✓（$(printf '%s\n' "$dst_manifest" | wc -l) 个文件 ✓）"
+    echo "  ② 清单指纹（sha256 of manifest）= $(printf '%s\n' "$dst_manifest" | sha256sum | cut -c1-16)"
 else
+    echo "  ✗ 两侧 sha256 清单**不一致** ✗ —— 只列前 20 行差异："
+    diff <(printf '%s\n' "$src_manifest") <(printf '%s\n' "$dst_manifest") | head -20
+    exit 1
+fi
+# ★ 交付给"要不要重起前端"的判据：**内容变没变**（✗ 不落在"我刚拷过"✗）
+if [ "$before" = "$dst_manifest" ]; then
+    echo "  ③ 内容与起脚本之前**相同** ⇒ 前端不用重起 ✓"
+    echo 0 > /tmp/front_changed
+else
+    echo "  ③ 内容**变了** ⇒ 前端必须重起 ✓；变的是这几处（至多 10 条）："
+    diff <(printf '%s\n' "$before") <(printf '%s\n' "$dst_manifest") | /bin/grep -E '^[<>]' | head -10 | sed 's/^/     /'
+    echo 1 > /tmp/front_changed
+fi
+EOS
+then
+    say "  ✗ 同步/自检失败 ⇒ 停 ✗（✗ 不带着旧那份起前端 ✗）"
+    exit 1
+fi
+
+# ── ③ ★ 前端 dev server（★ 在**容器里**跑 ✓ ⇒ ★ "一条命令起完" ✓）──
+#   ★ 内容变了就必须**重起** ✗（✗ 不指望 vite 的 HMR 一定会看见 ✓ ——
+#     `cp -p` 保留 mtime ⇒ watcher 未必触发 ⇒ 表相还是"能打开" ✓ 与本条要防的完全同形 ✗）
+#   ★ 判据 = **内容变了** ∨ **前端没在跑** ⇒ 重起 ✓（✗ 不无脑重起 —— 那会把业主正开着的页面打断 ✓）
+FRONT_ACTION="$(docker exec "${CONTAINER}" bash -lc '
+    c=$(cat /tmp/front_changed 2>/dev/null)
+    if [ "$c" = 1 ] || ! pgrep -f "[v]ite" >/dev/null 2>&1; then echo restart; else echo keep; fi' 2>/dev/null | tail -1)"
+if [ "${FRONT_ACTION}" = "restart" ]; then
+    docker exec "${CONTAINER}" bash -lc '
+        for p in $(pgrep -f "[v]ite"); do kill "$p" 2>/dev/null; done
+        sleep 1
+        for p in $(pgrep -f "[v]ite"); do kill -9 "$p" 2>/dev/null; done' 2>/dev/null
     docker exec -d "${CONTAINER}" bash -lc \
         "cd ${FRONT_DIR} && npm run dev > ${OUT}/frontend_dev.log 2>&1"
-    say "  ★ 前端已起 ✓（容器内 ${FRONT_DIR} ／ 日志 ${OUT}/frontend_dev.log ✓）"
+    say "  ★ 前端已（重）起 ✓（容器内 ${FRONT_DIR} ＝ 仓里那份 ✓ ／ 日志 ${OUT}/frontend_dev.log ✓）"
+else
+    say "  ★ 前端已在跑 ∧ 内容没变 ⇒ **不打断它** ✓（✗ 不无脑重起 ✓）"
 fi
 
 # ── ③′ ★ **登记 PID**（★ 停的时候按 PID 收 ✓）──
@@ -140,5 +217,6 @@ say "    HTTP :8765 ⇒ $(docker exec "${CONTAINER}" bash -lc 'curl -s --max-tim
 say "    use_sim_time ⇒ $(docker exec "${CONTAINER}" bash -lc 'source /opt/ros/humble/setup.bash && timeout 20 ros2 param get /outdoor_nav_bridge use_sim_time 2>/dev/null' 2>/dev/null | tr -d '\n')"
 say "    /odom 发布者 ⇒ $(docker exec "${CONTAINER}" bash -lc 'source /opt/ros/humble/setup.bash && timeout 20 ros2 topic info /odom 2>/dev/null' 2>/dev/null | /bin/grep -oE 'Publisher count: [0-9]+' || echo '（取不到）')"
 say "    :5173 监听（★ **宿主侧**量 ✓ —— 容器是 host 网络 ⇒ 宿主侧量到的就是它 ✓）⇒ $( (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | /bin/grep -c ":5173" )"
+say "    :5173 服务的**那份**＝仓里那份 ⇒ ★ 起前端之前已逐字节比过 ✓（见上面 ② 那行的清单指纹 ✓）"
 say "★ 完 ⇒ 现在可以 POST /api/routes 了 ✓（★ 浏览器开 http://localhost:5173 ✓ —— ★ WSL 侧、Windows 侧都行 ✓、✗ 不用切 Windows ✗）"
 say "  ★ ⚠ 若 :5173 是 0 ⇒ 看 ${OUT}/frontend_dev.log ✓（★ 别当『没起』就跳过 ✓）"

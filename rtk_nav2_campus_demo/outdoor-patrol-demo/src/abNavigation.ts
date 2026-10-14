@@ -1,4 +1,4 @@
-import { calibration, campus, dist, scale, toGeoreferenced } from "./map";
+import { calibration, campus, dist, mapToSvg, scale, toGeoreferenced } from "./map";
 import { route } from "./planner";
 import {
   extractWaypoints,
@@ -44,6 +44,54 @@ export function planAB(a: Point, b: Point, blocked: string[] = []): ABResult {
       taskOrder: ["ab-b"],
       stops: [{ id: "ab-b", name: "B 点", point: b, dwell: 0, distance }],
     },
+  };
+}
+/** ★ 车的**真实位姿**（**map 帧米值** —— 就是 `GET /api/status` 的 `pose{x,y,yaw}` ✓）。 */
+export type CarPose = { x: number; y: number; yaw: number };
+// ★★ 2026-10-14（reviewer 更正判据 ✓）：发出去的 `path`／`waypoints`
+//    **前面接一段"车的真实位置"** ✓ —— ✗ 不接会死在一个 nav2 的搜索窗口上 ✗：
+//   ★ 控制器用 `max_robot_pose_search_dist`（本栈 ≈ **3.99 m** ✓）在路径上找"离车最近的点" ✓
+//     ⇒ ★ 车离线超过它 ⇒ **一个点都找不到** ⇒ 报
+//       `Resulting plan has 0 poses in it` ⇒ ★ 立刻中止 ✓
+//     （★ reviewer 实测：★ **33.46 m** ⇒ 2 s 中止、车位移 **0.047 m** ✗；
+//       ★ **13.42 m ＋ 接这一段** ⇒ `completed` ✓ 末点离目标 **0.176 m** ✓）
+//   ★ 判据：★ **车到 A（＝车在路网上的投影点）> 0.1 m** 才接 ✓（在线就没什么可接的 ✓）
+//   ★ ★ 只动 `path` ∧ `waypoints` 两处 ✗ **别的字段一个不动** ✗ ——
+//     ★ 桥硬校验 `path[0] ≈ waypoints[0]`（≤0.01 m ✓）⇒ 两处必须同步接 ✓
+//   ★ ★ 本函数**不改** `exportAB`（★ "export 的算法不动" ✓）——
+//     它是"发出去之前"的一道**装配** ✓；离线导出的 JSON 仍是纯规划结果 ✓
+export function withCarStart(
+  route: ReturnType<typeof exportAB>,
+  car: CarPose | null,
+): ReturnType<typeof exportAB> {
+  if (!car) return route;
+  const first = route.path[0];
+  const lead = Math.hypot(car.x - first.x, car.y - first.y);
+  if (!(lead > 0.1)) return route;
+  const carEntry = {
+    ...toGeoreferenced(mapToSvg({ x: car.x, y: car.y })),
+    yaw: +car.yaw.toFixed(5),
+  };
+  return {
+    ...route,
+    length: +(route.length + lead).toFixed(3),
+    path: [carEntry, ...route.path],
+    waypoints: [
+      {
+        sequence: 1,
+        ...carEntry,
+        distance_m: 0,
+        kind: "pass",
+        reasons: ["start"],
+        name: "小车当前位置",
+        dwell_seconds: 0,
+      },
+      ...route.waypoints.map((w, i) => ({
+        ...w,
+        sequence: i + 2,
+        distance_m: +(w.distance_m + lead).toFixed(3),
+      })),
+    ],
   };
 }
 export function exportAB(a: Point, b: Point, result: ABResult) {
