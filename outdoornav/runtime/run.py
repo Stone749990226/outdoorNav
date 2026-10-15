@@ -340,6 +340,8 @@ def start(args):
                 state["last_navigation_status"] = json.load(response)
         except (OSError, ValueError):
             pass
+        state["ready"] = False
+        write_json(directory / "run.json", state)
         stop_owned(run_id)
         for child in children.values():
             try:

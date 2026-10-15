@@ -80,6 +80,7 @@ class Navigation(Node):
         self.maps = Maps(self, self.bundle, self.free)
         self.stats, self.lifecycle, self.lifecycle_pending = {}, {}, set()
         self.clock_value, self.clock_changed = None, 0.0
+        self.clock_rewound = False
         self.localization = "no_fix"
         self.global_map, self.local_map = None, None
         self.raw_command, self.raw_received = Twist(), 0.0
@@ -180,6 +181,7 @@ class Navigation(Node):
             if value != self.clock_value:
                 self.clock_changed = time.monotonic()
             if self.clock_value is not None and value < self.clock_value:
+                self.clock_rewound = True
                 if self.owner:
                     self.tasks.update(
                         self.owner,
@@ -796,6 +798,8 @@ class Navigation(Node):
             self.get_logger().error(f"Task {task_id}: {reason}")
         finally:
             if self.owner == task_id:
+                if self.clock_rewound:
+                    outcome, reason = "failed", "Simulation clock moved backward"
                 self.stopping = True
                 released = await self.release_controller(follow_requests)
                 stopped = stop_confirmed or await self.confirm_stop()

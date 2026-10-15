@@ -122,8 +122,18 @@ class FaultAcceptance(Acceptance):
             os.kill(candidates[0]["pid"], signal.SIGTERM)
         deadline = time.monotonic() + self.timeout
         while time.monotonic() < deadline:
-            status = self.request("/api/status")
-            task = self.request("/api/tasks/" + record["task"]["task_id"])
+            try:
+                status = self.request("/api/status")
+            except OSError:
+                # A terminal safety failure can shut down the API. The supervisor
+                # persists its final observation before terminating owned processes.
+                status = json.loads((self.run / "run.json").read_text()).get(
+                    "last_navigation_status", {}
+                )
+            task = status.get("task")
+            if not task or task["task_id"] != record["task"]["task_id"]:
+                time.sleep(0.2)
+                continue
             if task["state"] in TERMINAL:
                 break
             time.sleep(0.2)
