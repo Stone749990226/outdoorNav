@@ -286,7 +286,15 @@ def start(args):
                     if not observed["ready"]
                     else None
                 )
-                if unhealthy_since is not None and now - unhealthy_since >= 10:
+                # Controller cancellation and stop confirmation have a bounded
+                # 20-second cleanup budget. Keep the API alive to publish its
+                # terminal result before shutting down an unhealthy stack.
+                task_stopping = (observed.get("task") or {}).get("state") == "canceling"
+                health_deadline = 30 if task_stopping else 10
+                if (
+                    unhealthy_since is not None
+                    and now - unhealthy_since >= health_deadline
+                ):
                     state["last_navigation_status"] = observed
                     raise RuntimeError(
                         "Component health lost: "

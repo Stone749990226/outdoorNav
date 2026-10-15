@@ -189,6 +189,7 @@ class Navigation(Node):
                     )
                 self.stats.clear()
                 self.stopping = True
+                self.stop_failure = "Simulation clock moved backward; restart required"
             self.clock_value = value
 
     def on_localization(self, msg):
@@ -238,13 +239,16 @@ class Navigation(Node):
             return None
         t, q = transform.transform.translation, transform.transform.rotation
         stamp = transform.header.stamp.sec + transform.header.stamp.nanosec / 1e9
+        age = self.get_clock().now().nanoseconds / 1e9 - stamp
+        if age < -0.1:
+            return None
         return {
             "frame_id": "map",
             "x": t.x,
             "y": t.y,
             "yaw": yaw(q),
             "stamp_s": stamp,
-            "age_s": max(0, self.get_clock().now().nanoseconds / 1e9 - stamp),
+            "age_s": max(0, age),
         }
 
     def status(self, include_task=True):
@@ -796,7 +800,10 @@ class Navigation(Node):
                 released = await self.release_controller(follow_requests)
                 stopped = stop_confirmed or await self.confirm_stop()
                 if not released or not stopped:
-                    self.stop_failure = "Could not confirm controller release and robot stop; restart required"
+                    self.stop_failure = (
+                        ((reason + "; ") if reason else "")
+                        + "Could not confirm controller release and robot stop; restart required"
+                    )
                     outcome, reason = "failed", self.stop_failure
                 self.tasks.update(
                     task_id,

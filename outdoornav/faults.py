@@ -187,7 +187,13 @@ def main():
     if not math.isfinite(args.timeout) or args.timeout <= 0:
         parser.error("Timeout must be finite and positive")
     runner = FaultAcceptance(args.run, args.timeout)
-    report = {"schema_version": 1, "run_id": args.run.name, "scenario": args.scenario}
+    report = {
+        "schema_version": 1,
+        "run_id": args.run.name,
+        "scenario": args.scenario,
+        "scene_version": runner.bundle["scene_version"],
+        "route_version": runner.bundle["route_version"],
+    }
     try:
         report.update(runner.run_scenario(args.scenario))
     except (Exception, KeyboardInterrupt) as error:
