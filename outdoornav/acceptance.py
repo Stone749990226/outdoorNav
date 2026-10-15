@@ -12,6 +12,7 @@ from urllib.request import Request, urlopen
 from .bundle import ROOT, is_free, masks, route_mask
 from .routing import plan_route, snap
 from .tasks import TERMINAL
+from .validation import NAVIGATION_SCENARIOS
 
 
 class Acceptance:
@@ -118,6 +119,7 @@ class Acceptance:
             raise RuntimeError("Acceptance deadline exceeded")
         self.active.discard(task["task_id"])
         pose = self.pose()
+        completion_pose = task["completion_pose"] or pose
         ended = task["completed_sim_s"] or pose["stamp_s"]
         result = {
             "task_id": task["task_id"],
@@ -126,7 +128,8 @@ class Acceptance:
             "path_revision": task["path_revision"],
             "goal": task["goal"],
             "estimated_error_m": math.dist(
-                (pose["x"], pose["y"]), tuple(task["goal"].values())
+                (completion_pose["x"], completion_pose["y"]),
+                (task["goal"]["x"], task["goal"]["y"]),
             ),
             "expected": expected,
             "began_s": record["began_s"],
@@ -355,23 +358,13 @@ def main():
     parser.add_argument("--run", type=Path, required=True)
     parser.add_argument(
         "--scenario",
-        choices=[
-            "short",
-            "turnaround",
-            "cancel",
-            "replace",
-            "detour",
-            "injected-static",
-            "moving",
-            "blocked",
-            "ring",
-            "branch",
-            "all",
-        ],
+        choices=[*NAVIGATION_SCENARIOS, "all"],
         default="short",
     )
     parser.add_argument("--timeout", type=float, default=900)
     args = parser.parse_args()
+    if not math.isfinite(args.timeout) or args.timeout <= 0:
+        parser.error("Timeout must be finite and positive")
     runner = Acceptance(args.run, args.timeout)
     report = {
         "schema_version": 1,
@@ -381,22 +374,7 @@ def main():
         "route_version": runner.bundle["route_version"],
     }
     try:
-        names = (
-            [
-                "short",
-                "cancel",
-                "replace",
-                "turnaround",
-                "detour",
-                "injected-static",
-                "moving",
-                "blocked",
-                "ring",
-                "branch",
-            ]
-            if args.scenario == "all"
-            else [args.scenario]
-        )
+        names = NAVIGATION_SCENARIOS if args.scenario == "all" else [args.scenario]
         for name in names:
             runner.scenario(name)
         report["passed"] = True

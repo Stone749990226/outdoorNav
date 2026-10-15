@@ -8,6 +8,8 @@ import sys
 import time
 import uuid
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError
+from outdoornav.validation import NAVIGATION_SCENARIOS, FAULT_SCENARIOS
 from outdoornav.bundle import ROOT, load_bundle
 from .build import build
 from .environment import data_python, doctor, ros_environment
@@ -65,19 +67,7 @@ def main():
     )
     validate.add_argument(
         "--scenario",
-        choices=[
-            "short",
-            "cancel",
-            "replace",
-            "turnaround",
-            "detour",
-            "injected-static",
-            "moving",
-            "blocked",
-            "ring",
-            "branch",
-            "all",
-        ],
+        choices=[*NAVIGATION_SCENARIOS, *FAULT_SCENARIOS, "all"],
         default="short",
     )
     validate.add_argument("--timeout", type=float, default=900)
@@ -202,7 +192,9 @@ def main():
                 [
                     *data_python(),
                     "-m",
-                    "outdoornav.acceptance",
+                    "outdoornav.faults"
+                    if args.scenario in FAULT_SCENARIOS
+                    else "outdoornav.acceptance",
                     "--run",
                     state["directory"],
                     "--scenario",
@@ -280,6 +272,13 @@ def main():
                 check=True,
             )
         return 0
+    except HTTPError as error:
+        try:
+            detail = json.load(error).get("error", str(error))
+        except (ValueError, OSError):
+            detail = str(error)
+        print(f"OutdoorNav: {detail}", file=sys.stderr)
+        return 1
     except (RuntimeError, ValueError, OSError, subprocess.SubprocessError) as error:
         print(f"OutdoorNav: {error}", file=sys.stderr)
         return 1

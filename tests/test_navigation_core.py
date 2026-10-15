@@ -111,6 +111,18 @@ class RoutingTests(unittest.TestCase):
 
 
 class TaskTests(unittest.TestCase):
+    def test_evicted_task_callback_is_ignored(self):
+        store = TaskStore()
+        first = store.submit({"x": 0, "y": 0})
+        store.update(first["task_id"], state="succeeded")
+        for index in range(201):
+            task = store.submit({"x": index, "y": 0})
+            store.update(task["task_id"], state="succeeded")
+        with self.assertRaises(KeyError):
+            store.snapshot(first["task_id"])
+        self.assertFalse(store.update(first["task_id"], state="navigating"))
+        self.assertEqual(store.snapshot()["task_id"], task["task_id"])
+
     def test_replacement_and_late_results_cannot_overwrite_new_task(self):
         store = TaskStore()
         first = store.submit({"x": 1, "y": 2})
@@ -130,6 +142,13 @@ class TaskTests(unittest.TestCase):
         store.cancel(task["task_id"])
         store.cancel(task["task_id"])
         self.assertEqual(store.snapshot()["state"], "canceling")
+        pose = {"frame_id": "map", "x": 1, "y": 2, "stamp_s": 12.5}
+        store.update(task["task_id"], state="canceled", completion_pose=pose)
+        pose["x"] = 999
+        completed = store.snapshot()
+        completed["completion_pose"]["x"] = -999
+        self.assertEqual(store.snapshot()["completion_pose"]["x"], 1)
+        self.assertFalse(store.update(task["task_id"], completion_pose=pose))
 
 
 class ProgressTests(unittest.TestCase):

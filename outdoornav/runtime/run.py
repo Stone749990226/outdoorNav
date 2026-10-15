@@ -27,10 +27,14 @@ def check_port(port):
                 return
             except OSError as error:
                 if error.errno != errno.EADDRINUSE:
-                    raise RuntimeError(f"Cannot bind port {port}: {error.strerror}") from error
+                    raise RuntimeError(
+                        f"Cannot bind port {port}: {error.strerror}"
+                    ) from error
                 if attempt == 10:
-                    raise RuntimeError(f"Port {port} is busy; inspect its owner with ss -ltnp") from error
-        time.sleep(.2)
+                    raise RuntimeError(
+                        f"Port {port} is busy; inspect its owner with ss -ltnp"
+                    ) from error
+        time.sleep(0.2)
 
 
 def domain_available(domain):

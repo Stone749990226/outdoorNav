@@ -22,6 +22,7 @@ class Task:
     scene_version: str | None = None
     route_version: str | None = None
     completed_sim_s: float | None = None
+    completion_pose: dict | None = None
     state: str = "accepted"
     path_revision: int = 0
     execution_path: list = field(default_factory=list)

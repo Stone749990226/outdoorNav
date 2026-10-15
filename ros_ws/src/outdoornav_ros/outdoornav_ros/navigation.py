@@ -284,7 +284,9 @@ class Navigation(Node):
         health["tf"] = pose is not None and pose["age_s"] < 1.0
         health["controller_stopped"] = self.stop_failure is None
         health["actions"] = (
-            self.path_client.server_is_ready() and self.follow_client.server_is_ready()
+            self.path_client.server_is_ready()
+            and self.follow_client.server_is_ready()
+            and self.navigate_client.server_is_ready()
         )
         return {
             "schema_version": 1,
@@ -575,6 +577,7 @@ class Navigation(Node):
         task_id = bytes(handle.goal_id.uuid).hex()
         follow_requests = []
         outcome, reason = "failed", None
+        stop_confirmed, completion_pose = False, None
         try:
             # A successor cannot activate a mask or command while its predecessor is stopping.
             while True:
@@ -652,8 +655,28 @@ class Navigation(Node):
                     and follow_result.result().status == GoalStatus.STATUS_SUCCEEDED
                     and remaining <= 0.25
                 ) or (not current_points and remaining <= 0.25):
-                    outcome = "succeeded"
-                    break
+                    self.stopping = True
+                    if not await self.release_controller(follow_requests):
+                        raise RuntimeError("Could not release controller at arrival")
+                    if not await self.confirm_stop():
+                        raise RuntimeError("Could not confirm robot stop at arrival")
+                    if self.interrupted(task_id):
+                        raise InterruptedError("Task canceled while stopping")
+                    if not self.status(False)["ready"]:
+                        raise RuntimeError("Localization or sensors lost at arrival")
+                    stopped_pose = self.pose()
+                    remaining = math.dist(
+                        (stopped_pose["x"], stopped_pose["y"]),
+                        (goal_point["x"], goal_point["y"]),
+                    )
+                    self.tasks.update(task_id, distance_remaining_m=remaining)
+                    if remaining <= 0.25:
+                        outcome, stop_confirmed = "succeeded", True
+                        completion_pose = stopped_pose
+                        break
+                    # The estimate can move while braking. Resume planning rather
+                    # than reporting arrival outside the unchanged tolerance.
+                    current_points, follow_result = [], None
                 if now - started_sim > 1800:
                     raise RuntimeError(
                         "Navigation exceeded the 1800 simulation-second task limit"
@@ -771,7 +794,7 @@ class Navigation(Node):
             if self.owner == task_id:
                 self.stopping = True
                 released = await self.release_controller(follow_requests)
-                stopped = await self.confirm_stop()
+                stopped = stop_confirmed or await self.confirm_stop()
                 if not released or not stopped:
                     self.stop_failure = "Could not confirm controller release and robot stop; restart required"
                     outcome, reason = "failed", self.stop_failure
@@ -780,6 +803,7 @@ class Navigation(Node):
                     state=outcome,
                     reason=reason,
                     completed_sim_s=self.get_clock().now().nanoseconds / 1e9,
+                    completion_pose=completion_pose or self.pose(),
                 )
                 with self.state_lock:
                     self.owner = None
@@ -789,6 +813,7 @@ class Navigation(Node):
                     state=outcome,
                     reason=reason,
                     completed_sim_s=self.get_clock().now().nanoseconds / 1e9,
+                    completion_pose=self.pose(),
                 )
             self.handles.pop(task_id, None)
             self.requests.pop(task_id, None)
