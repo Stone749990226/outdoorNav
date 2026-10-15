@@ -1,28 +1,31 @@
 {
   "schema_version": 1,
   "scenario": "branch",
-  "run_id": "20261015-101102-631da0a8",
+  "run_id": "20261015-121724-9ccdc46d",
   "scene_version": "campus-06b547b8ec03",
   "route_version": "survey-388df4ebbef8",
   "passed": true,
   "tasks": [
     {
-      "task_id": "e8129b4e5fe845909de072b201942b07",
+      "task_id": "27080020df4346398cb0bb8f8398b70a",
       "state": "succeeded",
       "reason": null,
-      "path_revision": 73,
+      "path_revision": 37,
       "goal": {
         "x": 9.143282664944183,
         "y": -88.46751975843948
       },
-      "estimated_error_m": 0.17460519703694916,
+      "estimated_error_m": 0.1839635913939738,
       "expected": "succeeded",
-      "began_s": 43.66,
-      "ended_s": 523.496,
-      "truth_error_m": 0.2397694788817763,
+      "began_s": 19.52,
+      "ended_s": 260.426,
+      "truth_error_m": 0.30836717883150433,
       "truth_stop_displacement_m": 0.0,
       "truth_outside_corridor_samples": 0,
-      "minimum_truth_obstacle_clearance_m": 1.3125490619401632,
+      "minimum_truth_obstacle_clearance_m": 1.4917829936019527,
+      "minimum_injected_obstacle_clearance_m": null,
+      "final_reference_distance_m": 0.2967324701624852,
+      "last_two_meters_reference_distance_max_m": 0.3434197124729559,
       "passed": true
     }
   ]

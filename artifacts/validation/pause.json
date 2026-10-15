@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "run_id": "20261015-121724-9ccdc46d",
+  "scenario": "pause",
+  "scene_version": "campus-06b547b8ec03",
+  "route_version": "survey-388df4ebbef8",
+  "task": {
+    "task_id": "31fd85ccf64945baa5d2d94b907a1dac",
+    "goal": {
+      "x": 31.387743089418343,
+      "y": -67.50162766579314
+    },
+    "blocked_road_ids": [],
+    "schema_version": 1,
+    "frame_id": "map",
+    "scene_version": "campus-06b547b8ec03",
+    "route_version": "survey-388df4ebbef8",
+    "completed_sim_s": 482.254,
+    "completion_pose": {
+      "frame_id": "map",
+      "x": 26.116975424592937,
+      "y": -72.11111368011788,
+      "yaw": 0.571962656685674,
+      "stamp_s": 482.222,
+      "age_s": 0.03200000000003911
+    },
+    "state": "failed",
+    "path_revision": 1,
+    "distance_remaining_m": 7.126317160139986,
+    "reason": "Localization, clock, sensor or Nav2 became unavailable",
+    "cancel_requested": false
+  },
+  "health": {
+    "depth": true,
+    "points": true,
+    "lidar": true,
+    "localization": true,
+    "global_map": true,
+    "local_map": true,
+    "obstacle_services": true,
+    "clock": true,
+    "planner_server": true,
+    "controller_server": true,
+    "tf": true,
+    "controller_stopped": true,
+    "actions": true
+  },
+  "truth_stop_displacement_m": 9.999999999976694e-05,
+  "passed": true
+}

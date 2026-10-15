@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "scenario": "blocked",
+  "run_id": "20261015-121724-9ccdc46d",
+  "scene_version": "campus-06b547b8ec03",
+  "route_version": "survey-388df4ebbef8",
+  "passed": true,
+  "tasks": [
+    {
+      "task_id": "4a24ebc52e75451daaf6d24a347ba290",
+      "state": "failed",
+      "reason": "No traversable path inside the selected road corridor",
+      "path_revision": 6,
+      "goal": {
+        "x": 12.859180235832309,
+        "y": -83.9482778346739
+      },
+      "estimated_error_m": 16.74141377469367,
+      "expected": "failed",
+      "began_s": 413.92,
+      "ended_s": 434.562,
+      "truth_error_m": 16.754788294398228,
+      "truth_stop_displacement_m": 0.0,
+      "truth_outside_corridor_samples": 0,
+      "minimum_truth_obstacle_clearance_m": 2.8194828164884527,
+      "minimum_injected_obstacle_clearance_m": 2.8194828164884527,
+      "final_reference_distance_m": 0.2566095998024488,
+      "last_two_meters_reference_distance_max_m": null,
+      "passed": true
+    }
+  ]
+}

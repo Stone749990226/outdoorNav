@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "run_id": "20261015-123754-f512ed80",
+  "scenario": "rewind",
+  "scene_version": "campus-06b547b8ec03",
+  "route_version": "survey-388df4ebbef8",
+  "task": {
+    "task_id": "6f3154df50324209939058aca6b44d34",
+    "goal": {
+      "x": 2.1422795666362346,
+      "y": -7.778832367274973
+    },
+    "blocked_road_ids": [],
+    "schema_version": 1,
+    "frame_id": "map",
+    "scene_version": "campus-06b547b8ec03",
+    "route_version": "survey-388df4ebbef8",
+    "completed_sim_s": 15.554,
+    "completion_pose": null,
+    "state": "failed",
+    "path_revision": 1,
+    "distance_remaining_m": 7.0686547636603345,
+    "reason": "Simulation clock moved backward; Could not confirm controller release and robot stop; restart required",
+    "cancel_requested": true
+  },
+  "health": {
+    "depth": false,
+    "points": false,
+    "lidar": false,
+    "localization": true,
+    "global_map": true,
+    "local_map": true,
+    "obstacle_services": true,
+    "clock": true,
+    "planner_server": true,
+    "controller_server": true,
+    "tf": false,
+    "controller_stopped": false,
+    "actions": true
+  },
+  "truth_stop_displacement_m": 0.0,
+  "passed": true
+}

@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "scenario": "detour",
+  "run_id": "20261015-121724-9ccdc46d",
+  "scene_version": "campus-06b547b8ec03",
+  "route_version": "survey-388df4ebbef8",
+  "passed": true,
+  "tasks": [
+    {
+      "task_id": "47179c53309a495f96532fa61c5ec4bd",
+      "state": "succeeded",
+      "reason": null,
+      "path_revision": 16,
+      "goal": {
+        "x": 30.863952475668786,
+        "y": -67.89963768633574
+      },
+      "estimated_error_m": 0.20852820621212,
+      "expected": "succeeded",
+      "began_s": 368.288,
+      "ended_s": 408.32,
+      "truth_error_m": 0.16708817029308706,
+      "truth_stop_displacement_m": 0.0,
+      "truth_outside_corridor_samples": 0,
+      "minimum_truth_obstacle_clearance_m": 0.2946928425270514,
+      "minimum_injected_obstacle_clearance_m": 0.2946928425270514,
+      "final_reference_distance_m": 0.08308911406330016,
+      "last_two_meters_reference_distance_max_m": 0.5269311043566126,
+      "passed": true
+    }
+  ]
+}

@@ -1,31 +1,31 @@
 {
   "schema_version": 1,
   "scenario": "moving",
-  "run_id": "20261015-110320-c134371b",
+  "run_id": "20261015-121724-9ccdc46d",
   "scene_version": "campus-06b547b8ec03",
   "route_version": "survey-388df4ebbef8",
   "passed": true,
   "tasks": [
     {
-      "task_id": "c17201384d884b29951a6c02723513d7",
+      "task_id": "90c1a02815464c7bb91a48399932104e",
       "state": "succeeded",
       "reason": null,
-      "path_revision": 10,
+      "path_revision": 17,
       "goal": {
-        "x": 3.4305208591989236,
-        "y": -11.58073324416439
+        "x": 17.285166710477405,
+        "y": -79.62467256728746
       },
-      "estimated_error_m": 0.09332126362667688,
+      "estimated_error_m": 0.21959606147571165,
       "expected": "succeeded",
-      "began_s": 56.68,
-      "ended_s": 101.948,
-      "truth_error_m": 0.1204726275481406,
+      "began_s": 264.76,
+      "ended_s": 312.632,
+      "truth_error_m": 0.14235770871311648,
       "truth_stop_displacement_m": 0.0,
       "truth_outside_corridor_samples": 0,
-      "minimum_truth_obstacle_clearance_m": 0.6363915215510572,
-      "minimum_injected_obstacle_clearance_m": 0.6363915215510572,
-      "final_reference_distance_m": 0.12045047364879657,
-      "last_two_meters_reference_distance_max_m": 0.49684418074437536,
+      "minimum_truth_obstacle_clearance_m": 0.15885882491011216,
+      "minimum_injected_obstacle_clearance_m": 0.15885882491011216,
+      "final_reference_distance_m": 0.12480846559108792,
+      "last_two_meters_reference_distance_max_m": 0.1669233411930213,
       "passed": true
     }
   ]

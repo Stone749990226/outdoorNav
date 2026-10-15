@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "platform": "WSL2 Ubuntu 22.04",
+  "runs": {
+    "20261015-110320-c134371b": {
+      "git_revision": "b3871d9d35c1c9482f2a60fb4f5ef0c69d1a9da9",
+      "source_fingerprint": {
+        "sha256": "1f8f6c7130843e6b2ee9b537fa2663a63e3663db0be3aa562f918e842bc0862c"
+      },
+      "renderer": "hardware",
+      "scene_version": "campus-06b547b8ec03",
+      "route_version": "survey-388df4ebbef8",
+      "ros_domain_id": "12",
+      "rmw_implementation": null,
+      "partition": "outdoornav_20261015-110320-c134371b",
+      "navigation_config_sha256": "a91bac3c349521a6bc19dff8ef8b977c5f14def12887212f8d5c57ac49ec23e0",
+      "owned_processes_remaining": 0
+    },
+    "20261015-115130-92d62c83": {
+      "git_revision": "4e9c40b89b7ce30809d5af5adbfa0a66c300f545",
+      "source_fingerprint": {
+        "sha256": "6430655c790c2b4810df106b8f4784e78937aae72d63e5f8bc9ee1ee98837f3a"
+      },
+      "renderer": "hardware",
+      "scene_version": "campus-06b547b8ec03",
+      "route_version": "survey-388df4ebbef8",
+      "ros_domain_id": "34",
+      "rmw_implementation": "rmw_fastrtps_cpp",
+      "partition": "outdoornav_20261015-115130-92d62c83",
+      "navigation_config_sha256": "b62c7e9cdd62d957b224b3b49c3c8d83231cc4752c05d071939835224fd8911f",
+      "owned_processes_remaining": 0
+    },
+    "20261015-121724-9ccdc46d": {
+      "git_revision": "6e01e508ec2959928cdd6b4f4600572766311a17",
+      "source_fingerprint": {
+        "sha256": "695235622e621536fcb69d97b3bdce65c45c6ff50aed0d09ea55a7cded37b4b8"
+      },
+      "renderer": "hardware",
+      "scene_version": "campus-06b547b8ec03",
+      "route_version": "survey-388df4ebbef8",
+      "ros_domain_id": "50",
+      "rmw_implementation": "rmw_fastrtps_cpp",
+      "partition": "outdoornav_20261015-121724-9ccdc46d",
+      "navigation_config_sha256": "b62c7e9cdd62d957b224b3b49c3c8d83231cc4752c05d071939835224fd8911f",
+      "owned_processes_remaining": 0
+    },
+    "20261015-123754-f512ed80": {
+      "git_revision": "648855cd26c3d1d310dda8c61fd3fe4203b0fe0b",
+      "source_fingerprint": {
+        "sha256": "1f6f35e26ec256003c004ab756281113d9ec721287684e18057fc798a7d2e82d"
+      },
+      "renderer": "hardware",
+      "scene_version": "campus-06b547b8ec03",
+      "route_version": "survey-388df4ebbef8",
+      "ros_domain_id": "11",
+      "rmw_implementation": "rmw_fastrtps_cpp",
+      "partition": "outdoornav_20261015-123754-f512ed80",
+      "navigation_config_sha256": "b62c7e9cdd62d957b224b3b49c3c8d83231cc4752c05d071939835224fd8911f",
+      "owned_processes_remaining": 0
+    },
+    "20261015-124240-a749cb12": {
+      "git_revision": "648855cd26c3d1d310dda8c61fd3fe4203b0fe0b",
+      "source_fingerprint": {
+        "sha256": "1f6f35e26ec256003c004ab756281113d9ec721287684e18057fc798a7d2e82d"
+      },
+      "renderer": "software",
+      "scene_version": "campus-06b547b8ec03",
+      "route_version": "survey-388df4ebbef8",
+      "ros_domain_id": "53",
+      "rmw_implementation": "rmw_fastrtps_cpp",
+      "partition": "outdoornav_20261015-124240-a749cb12",
+      "navigation_config_sha256": "b62c7e9cdd62d957b224b3b49c3c8d83231cc4752c05d071939835224fd8911f",
+      "owned_processes_remaining": 0
+    }
+  }
+}
