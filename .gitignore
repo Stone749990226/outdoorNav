@@ -5,6 +5,15 @@
 /ros2_full/
 /*.pdf
 **/__pycache__/
+/.venv/
+/venv/
+**/*.egg-info/
+/build/
+/dist/
 /.ros-build/
 /.ros-install/
 /.ros-log/
+
+/artifacts/runs/
+/artifacts/history/
+**/*.tsbuildinfo

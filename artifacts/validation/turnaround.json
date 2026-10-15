@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "scenario": "turnaround",
+  "run_id": "20261015-110320-c134371b",
+  "scene_version": "campus-06b547b8ec03",
+  "route_version": "survey-388df4ebbef8",
+  "passed": true,
+  "tasks": [
+    {
+      "task_id": "2adc419be4ea4f60a08106b8b4572eac",
+      "state": "succeeded",
+      "reason": null,
+      "path_revision": 3,
+      "goal": {
+        "x": 5.163079869004717,
+        "y": -21.212189862986666
+      },
+      "estimated_error_m": 0.20417633831357607,
+      "expected": "succeeded",
+      "began_s": 201.92,
+      "ended_s": 218.766,
+      "truth_error_m": 0.2520949015003471,
+      "truth_stop_displacement_m": 0.0,
+      "truth_outside_corridor_samples": 0,
+      "minimum_truth_obstacle_clearance_m": 7.2138,
+      "minimum_injected_obstacle_clearance_m": null,
+      "final_reference_distance_m": 0.2517045468248654,
+      "last_two_meters_reference_distance_max_m": 0.5329166666144737,
+      "passed": true
+    },
+    {
+      "task_id": "4a27e1be729e4a6eab172751c675e70f",
+      "state": "succeeded",
+      "reason": null,
+      "path_revision": 3,
+      "goal": {
+        "x": 4.706487103451132,
+        "y": -17.24183806127205
+      },
+      "estimated_error_m": 0.037236908404014446,
+      "expected": "succeeded",
+      "began_s": 220.66,
+      "ended_s": 247.274,
+      "truth_error_m": 0.0954614470411668,
+      "truth_stop_displacement_m": 0.0,
+      "truth_outside_corridor_samples": 0,
+      "minimum_truth_obstacle_clearance_m": 6.8656,
+      "minimum_injected_obstacle_clearance_m": null,
+      "final_reference_distance_m": 0.0954614470411668,
+      "last_two_meters_reference_distance_max_m": 0.28046887983561436,
+      "passed": true
+    }
+  ]
+}

@@ -19,3 +19,16 @@ def enu(latitude, longitude, anchor):
         math.radians(longitude - anchor["longitude"]) * east_radius,
         math.radians(latitude - anchor["latitude"]) * north_radius,
     )
+
+
+def quaternion_matrix(x, y, z, w):
+    """Convert a unit quaternion into its 3D rotation matrix."""
+    import numpy as np
+
+    return np.array(
+        [
+            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+        ]
+    )

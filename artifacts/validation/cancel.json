@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "scenario": "cancel",
+  "run_id": "20261015-110320-c134371b",
+  "scene_version": "campus-06b547b8ec03",
+  "route_version": "survey-388df4ebbef8",
+  "passed": true,
+  "tasks": [
+    {
+      "task_id": "534844c1cb694bf296b105147b5a7c0c",
+      "state": "canceled",
+      "reason": "Task canceled or superseded",
+      "path_revision": 2,
+      "goal": {
+        "x": 5.001019902055331,
+        "y": -19.546074383507218
+      },
+      "estimated_error_m": 5.450077479968989,
+      "expected": "canceled",
+      "began_s": 167.46,
+      "ended_s": 174.478,
+      "truth_error_m": 5.466318885588275,
+      "truth_stop_displacement_m": 0.00014142135623855,
+      "truth_outside_corridor_samples": 0,
+      "minimum_truth_obstacle_clearance_m": 8.31,
+      "minimum_injected_obstacle_clearance_m": null,
+      "final_reference_distance_m": 0.5311242478929871,
+      "last_two_meters_reference_distance_max_m": null,
+      "passed": true
+    }
+  ]
+}

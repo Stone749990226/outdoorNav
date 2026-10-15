@@ -1,0 +1,16 @@
+npm warn Unknown user config "lockfile". This will stop working in the next major version of npm.
+
+> outdoornav-web@1.0.0 test:e2e
+> playwright test --grep map interaction
+
+[WebServer] npm warn Unknown user config "lockfile". This will stop working in the next major version of npm.
+[WebServer] (node:58774) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 1 test using 1 worker
+
+(node:58795) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/navigation.spec.ts:145:1 › map interaction adds static and moving obstacles and deletes them (1.6s)
+
+  1 passed (3.2s)

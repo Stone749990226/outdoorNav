@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "scenario": "injected-static",
+  "run_id": "20261015-101102-631da0a8",
+  "scene_version": "campus-06b547b8ec03",
+  "route_version": "survey-388df4ebbef8",
+  "passed": true,
+  "tasks": [
+    {
+      "task_id": "b6e93f4fa51c4017903a24f997e7f9b6",
+      "state": "succeeded",
+      "reason": null,
+      "path_revision": 9,
+      "goal": {
+        "x": 19.67624988662731,
+        "y": -77.60669330891888
+      },
+      "estimated_error_m": 0.09134262496737003,
+      "expected": "succeeded",
+      "began_s": 795.226,
+      "ended_s": 858.558,
+      "truth_error_m": 0.16606812342188154,
+      "truth_stop_displacement_m": 0.0,
+      "truth_outside_corridor_samples": 0,
+      "minimum_truth_obstacle_clearance_m": 0.2122399314361023,
+      "minimum_injected_obstacle_clearance_m": 0.2122399314361023,
+      "final_reference_distance_m": 0.16606812342188154,
+      "passed": true
+    }
+  ]
+}

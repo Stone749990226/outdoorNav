@@ -1,0 +1,13 @@
+npm warn Unknown user config "lockfile". This will stop working in the next major version of npm.
+
+> outdoornav-web@1.0.0 test
+> vitest run
+
+
+ RUN  v4.1.11 /home/stone/learn/outdoorNav/web
+
+
+ Test Files  3 passed (3)
+      Tests  16 passed (16)
+   Start at  10:11:52
+   Duration  400ms (transform 419ms, setup 0ms, import 607ms, tests 53ms, environment 0ms)

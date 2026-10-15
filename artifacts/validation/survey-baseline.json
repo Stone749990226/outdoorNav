@@ -1,0 +1,9 @@
+{
+  "network_matches_baseline": true,
+  "processing_report_matches_baseline": true,
+  "route_version": "survey-388df4ebbef8",
+  "origin": {
+    "latitude": 30.22413029,
+    "longitude": 120.25979315833334
+  }
+}

@@ -1,7 +1,0 @@
-artifacts/
-*.log
-.git/
-docs/
-.pytest_cache/
-__pycache__/
-*.pyc

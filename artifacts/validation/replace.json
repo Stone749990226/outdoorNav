@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "scenario": "replace",
+  "run_id": "20261015-110320-c134371b",
+  "scene_version": "campus-06b547b8ec03",
+  "route_version": "survey-388df4ebbef8",
+  "passed": true,
+  "tasks": [
+    {
+      "task_id": "639fb588b2354f638989839fd4e2607a",
+      "state": "canceled",
+      "reason": "Task canceled or superseded",
+      "path_revision": 1,
+      "goal": {
+        "x": 5.062179400500179,
+        "y": -20.174846491723095
+      },
+      "estimated_error_m": 5.184270029700639,
+      "expected": "canceled",
+      "began_s": 178.48,
+      "ended_s": 184.356,
+      "truth_error_m": 5.270472104842999,
+      "truth_stop_displacement_m": 9.999999999976694e-05,
+      "truth_outside_corridor_samples": 0,
+      "minimum_truth_obstacle_clearance_m": 8.504199999999999,
+      "minimum_injected_obstacle_clearance_m": null,
+      "final_reference_distance_m": 0.6078890754687387,
+      "last_two_meters_reference_distance_max_m": null,
+      "passed": true
+    },
+    {
+      "task_id": "d03b1cce427a4d8797c7113b5496de45",
+      "state": "succeeded",
+      "reason": null,
+      "path_revision": 2,
+      "goal": {
+        "x": 4.69752933417422,
+        "y": -17.200559820448525
+      },
+      "estimated_error_m": 0.1036218187195652,
+      "expected": "succeeded",
+      "began_s": 183.58,
+      "ended_s": 197.526,
+      "truth_error_m": 0.1312487973070869,
+      "truth_stop_displacement_m": 0.0,
+      "truth_outside_corridor_samples": 0,
+      "minimum_truth_obstacle_clearance_m": 7.5539,
+      "minimum_injected_obstacle_clearance_m": null,
+      "final_reference_distance_m": 0.13124879730708694,
+      "last_two_meters_reference_distance_max_m": 0.5991040668796321,
+      "passed": true
+    }
+  ]
+}

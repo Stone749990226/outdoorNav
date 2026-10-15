@@ -1,0 +1,217 @@
+<?xml version="1.0" ?>
+
+<robot name="robot_rtk" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:include filename="$(find turtlebot3_description)/urdf/turtlebot3_burger.urdf"/>
+
+  <material name="rtk_marker_red">
+    <color rgba="1.0 0.0 0.0 1.0"/>
+  </material>
+  <link name="rtk_marker_link">
+    <visual>
+      <origin xyz="0 0 1.0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.012" radius="0.5"/>
+      </geometry>
+      <material name="rtk_marker_red"/>
+    </visual>
+  </link>
+  <joint name="rtk_marker_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="rtk_marker_link"/>
+  </joint>
+
+  <joint name="camera_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="camera_link"/>
+    <origin xyz="0.055 0 0.19" rpy="0 0 0"/>
+  </joint>
+
+  <link name="camera_link">
+
+    <visual>
+      <geometry><box size="0.03 0.06 0.03"/></geometry>
+    </visual>
+  </link>
+
+  <joint name="camera_optical_joint" type="fixed">
+    <parent link="camera_link"/>
+    <child link="camera_optical_frame"/>
+    <origin xyz="0 0 0" rpy="-1.5707963 0 -1.5707963"/>
+  </joint>
+  <link name="camera_optical_frame"/>
+
+  <joint name="rtk_scan_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="rtk_scan_link"/>
+    <origin xyz="0 0 0.10" rpy="0 0 0"/>
+  </joint>
+  <link name="rtk_scan_link">
+    <visual>
+
+      <geometry><cylinder radius="0.03" length="0.03"/></geometry>
+    </visual>
+
+    <inertial>
+      <mass value="0.05"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+    </inertial>
+  </link>
+
+  <joint name="rtk_imu_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="rtk_imu_link"/>
+    <origin xyz="0 0 0.05" rpy="0 0 0"/>
+  </joint>
+
+  <link name="rtk_imu_link">
+    <visual>
+      <geometry><box size="0.02 0.02 0.01"/></geometry>
+    </visual>
+    <inertial>
+      <mass value="0.01"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+    </inertial>
+  </link>
+
+  <joint name="gps_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="gps_link"/>
+    <origin xyz="-0.03 0 0.12" rpy="0 0 0"/>
+  </joint>
+  <link name="gps_link">
+    <visual>
+      <geometry><box size="0.04 0.04 0.01"/></geometry>
+    </visual>
+    <inertial>
+      <mass value="0.02"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+    </inertial>
+  </link>
+
+  <gazebo>
+    <plugin filename="ignition-gazebo-diff-drive-system"
+            name="ignition::gazebo::systems::DiffDrive">
+      <left_joint>wheel_left_joint</left_joint>
+      <right_joint>wheel_right_joint</right_joint>
+      <wheel_separation>0.160</wheel_separation>
+      <wheel_radius>0.033</wheel_radius>
+      <max_linear_acceleration>0.5</max_linear_acceleration>
+      <max_angular_acceleration>1.0</max_angular_acceleration>
+      <topic>/cmd_vel</topic>
+
+      <odom_topic>/wheel_odom_raw</odom_topic>
+      <odom_publish_frequency>30</odom_publish_frequency>
+      <tf_topic>/wheel_tf_diag</tf_topic>
+      <frame_id>odom</frame_id>
+      <child_frame_id>base_footprint</child_frame_id>
+    </plugin>
+
+    <plugin filename="ignition-gazebo-joint-state-publisher-system"
+            name="ignition::gazebo::systems::JointStatePublisher">
+      <topic>/joint_states</topic>
+      <joint_name>wheel_left_joint</joint_name>
+      <joint_name>wheel_right_joint</joint_name>
+    </plugin>
+
+    <plugin filename="ignition-gazebo-odometry-publisher-system"
+            name="ignition::gazebo::systems::OdometryPublisher">
+      <dimensions>2</dimensions>
+      <odom_frame>world</odom_frame>
+      <robot_base_frame>base_footprint</robot_base_frame>
+      <odom_topic>/ground_truth/odom</odom_topic>
+      <odom_publish_frequency>30</odom_publish_frequency>
+      <tf_topic>/ground_truth_tf</tf_topic>
+    </plugin>
+  </gazebo>
+
+  <gazebo reference="camera_link">
+    <sensor name="depth_camera" type="rgbd_camera">
+      <topic>/rtk/camera</topic>
+      <update_rate>10</update_rate>
+      <always_on>1</always_on>
+      <visualize>false</visualize>
+      <camera>
+        <horizontal_fov>1.0472</horizontal_fov>
+        <image>
+          <width>320</width>
+          <height>240</height>
+          <format>R8G8B8</format>
+        </image>
+        <clip>
+          <near>0.05</near>
+          <far>8.0</far>
+        </clip>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.0</stddev>
+        </noise>
+      </camera>
+    </sensor>
+  </gazebo>
+
+  <gazebo reference="rtk_scan_link">
+    <sensor name="near_lidar" type="gpu_lidar">
+      <topic>/rtk/scan</topic>
+      <update_rate>10</update_rate>
+      <always_on>1</always_on>
+      <visualize>false</visualize>
+      <lidar>
+        <scan>
+          <horizontal>
+            <samples>360</samples>
+            <resolution>1</resolution>
+            <min_angle>-3.14159265</min_angle>
+            <max_angle>3.14159265</max_angle>
+          </horizontal>
+        </scan>
+        <range>
+
+          <min>0.02</min>
+          <max>8.0</max>
+          <resolution>0.01</resolution>
+        </range>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.005</stddev>
+        </noise>
+      </lidar>
+    </sensor>
+  </gazebo>
+
+  <gazebo reference="rtk_imu_link">
+    <sensor name="imu_sensor" type="imu">
+      <topic>/rtk/imu</topic>
+      <update_rate>50</update_rate>
+      <always_on>1</always_on>
+      <visualize>false</visualize>
+      <imu>
+        <orientation_reference_frame>
+          <localization>ENU</localization>
+        </orientation_reference_frame>
+        <angular_velocity>
+          <x><noise type="gaussian"><mean>0.0</mean><stddev>2.0e-4</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0.0</mean><stddev>2.0e-4</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0.0</mean><stddev>2.0e-4</stddev></noise></z>
+        </angular_velocity>
+        <linear_acceleration>
+          <x><noise type="gaussian"><mean>0.0</mean><stddev>1.7e-2</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0.0</mean><stddev>1.7e-2</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0.0</mean><stddev>1.7e-2</stddev></noise></z>
+        </linear_acceleration>
+      </imu>
+    </sensor>
+  </gazebo>
+
+  <gazebo reference="gps_link">
+    <sensor name="navsat_sensor" type="navsat">
+      <topic>/rtk/navsat</topic>
+      <update_rate>10</update_rate>
+      <always_on>1</always_on>
+      <visualize>false</visualize>
+    </sensor>
+  </gazebo>
+
+</robot>

@@ -1,0 +1,137 @@
+[
+  {
+    "component": "system",
+    "ok": true,
+    "detail": "WSL2 Ubuntu 22.04"
+  },
+  {
+    "component": "ign",
+    "ok": true,
+    "detail": "/usr/bin/ign"
+  },
+  {
+    "component": "colcon",
+    "ok": true,
+    "detail": "/usr/bin/colcon"
+  },
+  {
+    "component": "node",
+    "ok": true,
+    "detail": "/home/stone/.nvm/versions/node/v24.13.0/bin/node"
+  },
+  {
+    "component": "npm",
+    "ok": true,
+    "detail": "/home/stone/.nvm/versions/node/v24.13.0/bin/npm"
+  },
+  {
+    "component": "glxinfo",
+    "ok": true,
+    "detail": "/usr/bin/glxinfo"
+  },
+  {
+    "component": "node_version",
+    "ok": true,
+    "detail": "v24.13.0; Node >=22.12 required"
+  },
+  {
+    "component": "ros_gz_sim",
+    "ok": true,
+    "detail": "available"
+  },
+  {
+    "component": "ros_gz_bridge",
+    "ok": true,
+    "detail": "available"
+  },
+  {
+    "component": "ros_gz_interfaces",
+    "ok": true,
+    "detail": "available"
+  },
+  {
+    "component": "robot_localization",
+    "ok": true,
+    "detail": "available"
+  },
+  {
+    "component": "nav2_planner",
+    "ok": true,
+    "detail": "available"
+  },
+  {
+    "component": "nav2_navfn_planner",
+    "ok": true,
+    "detail": "available"
+  },
+  {
+    "component": "nav2_regulated_pure_pursuit_controller",
+    "ok": true,
+    "detail": "available"
+  },
+  {
+    "component": "sensor_msgs_py",
+    "ok": true,
+    "detail": "available"
+  },
+  {
+    "component": "nav2_controller",
+    "ok": true,
+    "detail": "available"
+  },
+  {
+    "component": "nav2_lifecycle_manager",
+    "ok": true,
+    "detail": "available"
+  },
+  {
+    "component": "nav2_costmap_2d",
+    "ok": true,
+    "detail": "available"
+  },
+  {
+    "component": "robot_state_publisher",
+    "ok": true,
+    "detail": "available"
+  },
+  {
+    "component": "turtlebot3_description",
+    "ok": true,
+    "detail": "available"
+  },
+  {
+    "component": "xacro",
+    "ok": true,
+    "detail": "available"
+  },
+  {
+    "component": "laser_geometry",
+    "ok": true,
+    "detail": "available"
+  },
+  {
+    "component": "gazebo_entity_services",
+    "ok": true,
+    "detail": "available"
+  },
+  {
+    "component": "display",
+    "ok": true,
+    "detail": "name of display: :0\ndisplay: :0  screen: 0\ndirect rendering: Yes\nExtended renderer info (GLX_MESA_query_renderer):\n    Vendor: Microsoft Corporation (0xffffffff)\n    Device: D3D12 (Intel(R) UHD Graphics) (0xffffffff)\n    Version: 23.2.1\n    Accelerated: yes\n    Video memory: 16354MB\n    Unified memory: yes\n    Preferred profile: core (0x1)\n    Max core profile version: 4.1\n    Max compat profile version: 4.1\n    Max GLES1 profile version: 1.1\n    Max GLES[23] profile version: 3.0\nOpenGL vendor string: Microsoft Corporation\nOpenGL renderer string: D3D12 (Intel(R) UHD Graphics)\nOpenGL core profile version string: 4.1 (Core Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4\nOpenGL core profile shading language version string: 4.10\nOpenGL core profile context flags: (none)\nOpenGL core profile profile mask: core profile\n\nOpenGL version string: 4.1 (Compatibility Profile) Mesa 23.2.1-1ubuntu3.1~22.04.4\nOpenGL shading language version string: 4.10\nOpenGL context flags: (none)\nOpenGL profile mask: compatibility profile\n\nOpenGL ES profile version string: OpenGL ES 3.0 Mesa 23.2.1-1ubuntu3.1~22.04.4\nOpenGL ES profile shading language version string: OpenGL ES GLSL ES 3.00"
+  },
+  {
+    "component": "render",
+    "ok": true,
+    "detail": "Usable OpenGL context: hardware"
+  },
+  {
+    "component": "data_python",
+    "ok": true,
+    "detail": "conda run --no-capture-output -n torch python"
+  },
+  {
+    "component": "scene",
+    "ok": true,
+    "detail": "campus-06b547b8ec03"
+  }
+]

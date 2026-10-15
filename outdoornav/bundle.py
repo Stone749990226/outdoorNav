@@ -60,6 +60,7 @@ def route_mask(bundle, free, route, actual_start):
     grid = bundle["grid"]
     res, (ox, oy) = grid["resolution"], grid["origin"]
     allowed = np.zeros_like(free)
+    preference = np.full(free.shape, 100, dtype=np.int8)
     widths = bundle["road_widths_m"]
     pts, edges = list(route["reference_path"]), list(route["segment_roads"])
     if len(pts) == 1:
@@ -83,9 +84,16 @@ def route_mask(bundle, free, route, actual_start):
         dx, dy = b["x"] - a["x"], b["y"] - a["y"]
         norm = dx * dx + dy * dy
         t = np.clip(((x - a["x"]) * dx + (y - a["y"]) * dy) / norm, 0, 1) if norm else 0
-        allowed[r0:r1, c0:c1] |= (x - a["x"] - t * dx) ** 2 + (
-            y - a["y"] - t * dy
-        ) ** 2 <= radius**2
+        distance_squared = (x - a["x"] - t * dx) ** 2 + (y - a["y"] - t * dy) ** 2
+        inside = distance_squared <= radius**2
+        allowed[r0:r1, c0:c1] |= inside
+        # Prefer the surveyed centerline without making it a mandatory waypoint.
+        # Navfn can trade this soft cost for a legal detour around sensed obstacles.
+        cost = np.minimum(100, np.rint(60 * distance_squared / radius**2)).astype(
+            np.int8
+        )
+        target = preference[r0:r1, c0:c1]
+        np.minimum(target, np.where(inside, cost, 100), out=target)
     allowed &= free
     if not is_free(allowed, grid, actual_start) or not is_free(
         allowed, grid, route["goal"]
@@ -93,7 +101,7 @@ def route_mask(bundle, free, route, actual_start):
         raise ValueError(
             "Robot or destination is outside the selected traversable road corridor"
         )
-    return np.where(allowed, 0, 100).astype(np.int8)
+    return np.where(allowed, preference, 100).astype(np.int8)
 
 
 def write_bundle(output, config, network, scene):
