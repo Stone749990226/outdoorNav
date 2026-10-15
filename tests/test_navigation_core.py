@@ -54,6 +54,20 @@ class RoutingTests(unittest.TestCase):
             self.bundle["survey_report"]["logs"]["loop"]["quality_counts"], {"2": 2135}
         )
 
+    def test_robot_in_junction_arrival_neighborhood_can_enter_open_arc(self):
+        road = self.network["roads"][0]
+        a, b = road["points"][:2]
+        length = math.dist((a["x"], a["y"]), (b["x"], b["y"]))
+        start = {key: a[key] + 0.12 / length * (b[key] - a[key]) for key in ("x", "y")}
+        goal = next(node for node in self.network["nodes"] if node["id"] == "J")
+        route = plan_route(self.network, start, goal, ["loop-a"])
+        self.assertEqual(route["road_ids"], ["loop-b"])
+        allowed = route_mask(self.bundle, self.free, route, start) < 100
+        self.assertTrue(is_free(allowed, self.bundle["grid"], start))
+        # A goal on the closed arc still cannot silently move to another road.
+        with self.assertRaises(ValueError):
+            plan_route(self.network, goal, start, ["loop-a"])
+
     def test_road_mask_allows_detour_without_erasing_static_obstacles(self):
         road = self.network["roads"][0]
         a, b = road["points"][:2]
@@ -64,6 +78,12 @@ class RoutingTests(unittest.TestCase):
         self.assertGreater(np.count_nonzero(mask < 100), 20)
         self.assertTrue(is_free(mask < 100, self.bundle["grid"], a))
         self.assertTrue(np.any((mask > 0) & (mask < 100)))
+        shifted_start = {"x": a["x"] + 0.5, "y": a["y"]}
+        self.assertTrue(
+            np.array_equal(
+                mask, route_mask(self.bundle, self.free, route, shifted_start)
+            )
+        )
         with self.assertRaises(ValueError):
             route_mask(self.bundle, self.free, route, {"x": 40, "y": -25})
 

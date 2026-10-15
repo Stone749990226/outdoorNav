@@ -66,12 +66,9 @@ def route_mask(bundle, free, route, actual_start):
     if len(pts) == 1:
         pts.append(pts[0])
         edges.append(route["start_road_id"])
-    if (
-        math.dist((actual_start["x"], actual_start["y"]), (pts[0]["x"], pts[0]["y"]))
-        > 1e-6
-    ):
-        pts.insert(0, actual_start)
-        edges.insert(0, edges[0])
+    # Endpoint disks already admit an off-center robot within the selected road.
+    # Extending a full-width corridor around a straight connector could widen the
+    # road into a closed neighbor; Nav2 must plan the connection inside this mask.
     height, width = free.shape
     for a, b, road in zip(pts, pts[1:], edges):
         radius = widths[road] / 2 - res * math.sqrt(2) / 2

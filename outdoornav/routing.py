@@ -44,7 +44,28 @@ def plan_route(network, start, goal, blocked=()):
             raise ValueError("An endpoint lies on a closed road")
         return alternative
 
-    a, b = open_endpoint(a, start), open_endpoint(b, goal)
+    if a["road_id"] in blocked:
+        # Arrival accepts a small neighborhood, not an exact graph vertex. A robot
+        # already inside a shared junction can enter an open outgoing road.
+        closed = next(road for road in network["roads"] if road["id"] == a["road_id"])
+        junctions = [
+            node
+            for node in network["nodes"]
+            if node["id"] in (closed["from"], closed["to"])
+            and distance(start, node) <= 0.5
+            and any(
+                road["id"] not in blocked and node["id"] in (road["from"], road["to"])
+                for road in network["roads"]
+            )
+        ]
+        a = (
+            snap(
+                network, min(junctions, key=lambda node: distance(start, node)), blocked
+            )
+            if junctions
+            else open_endpoint(a, start)
+        )
+    b = open_endpoint(b, goal)
     key = lambda p: (round(p["x"], 9), round(p["y"], 9))
     graph, points = {}, {}
     for road in network["roads"]:
