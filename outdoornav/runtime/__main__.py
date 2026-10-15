@@ -24,7 +24,10 @@ def main():
     for name in ("doctor", "build", "status", "down"):
         commands.add_parser(name)
     up = commands.add_parser("up")
-    up.add_argument("--rviz", action="store_true")
+    # RViz is on by default. The launch default must stay in step with this
+    # flag: `store_false` makes the default True, and run.py always passes an
+    # explicit rviz:= value, so flipping only one of the two flips the result.
+    up.add_argument("--no-rviz", dest="rviz", action="store_false")
     up.add_argument(
         "--render", choices=["auto", "hardware", "software"], default="auto"
     )

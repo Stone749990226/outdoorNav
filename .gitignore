@@ -14,6 +14,9 @@
 /.ros-install/
 /.ros-log/
 
+# Crash dumps land in the tree root and show up as untracked noise.
+/core.*
+
 /artifacts/runs/
 /artifacts/history/
 **/*.tsbuildinfo

@@ -49,7 +49,8 @@ ROS 节点始终使用 Humble 对应的系统 Python。启动程序不会安装�
 
 | 命令 | 用途 |
 | --- | --- |
-| `./nav up --rviz` | 同时查看传感器、地图和路径 |
+| `./nav up` | 默认同时起 RViz（看传感器、地图和路径）|
+| `./nav up --no-rviz` | 不起 RViz，只起仿真与前端 |
 | `./nav up --render software` | 使用软件渲染；默认 auto 会检测并尝试回退 |
 | `./nav build` | 显式构建；up 也会按源码与依赖指纹检查重建 |
 | `./nav status` / `./nav logs navigation` | 查看健康、任务和日志 |

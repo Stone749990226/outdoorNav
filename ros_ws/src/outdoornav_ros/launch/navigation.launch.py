@@ -119,7 +119,7 @@ def generate_launch_description():
         [
             DeclareLaunchArgument("bundle"),
             DeclareLaunchArgument("run_dir"),
-            DeclareLaunchArgument("rviz", default_value="false"),
+            DeclareLaunchArgument("rviz", default_value="true"),
             OpaqueFunction(function=nodes),
         ]
     )

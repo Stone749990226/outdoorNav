@@ -77,6 +77,67 @@ def select_domain(requested=None):
     raise RuntimeError("No unused local ROS domain within 10..79")
 
 
+# The view is placed once, with `move_to/pose`, and then left alone. `follow`
+# and `track` are persistent modes: a single message keeps pulling the view for
+# the rest of the session and locks panning, so a one-shot request would still
+# take effect forever.
+CAMERA_OFFSET = (-6.0, -6.0, 8.0)  # behind and above the car, from the car's pose
+# Orientation looking from that offset back at the car: the rotation carrying the
+# camera's +x onto the look vector (6, 6, -8)/11.6619, written as (w, x, y, z).
+CAMERA_ORIENTATION = (0.87018, 0.0, 0.39417, 0.29564)
+
+
+def aim_camera(env, pose):
+    """Point the Gazebo view at the car once. Best effort; never fails startup."""
+    if not pose:
+        print(
+            "Camera view left where the config put it: /api/status had no pose",
+            flush=True,
+        )
+        return
+    x = pose["x"] + CAMERA_OFFSET[0]
+    y = pose["y"] + CAMERA_OFFSET[1]
+    request = (
+        "pose: {position: {x: %.4f, y: %.4f, z: %.4f}, orientation: "
+        "{w: %.5f, x: %.5f, y: %.5f, z: %.5f}}"
+        % (x, y, CAMERA_OFFSET[2], *CAMERA_ORIENTATION)
+    )
+    try:
+        sent = subprocess.run(
+            [
+                "ign",
+                "service",
+                "-s",
+                "/gui/move_to/pose",
+                "--reqtype",
+                "ignition.msgs.GUICamera",
+                "--reptype",
+                "ignition.msgs.Boolean",
+                "--timeout",
+                "8000",
+                "--req",
+                request,
+            ],
+            env=env,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        print(f"Camera view not moved: {error}", flush=True)
+        return
+    if sent.returncode == 0:
+        print(
+            "Camera view moved once to behind/above the car "
+            f"({x:.3f}, {y:.3f}, {CAMERA_OFFSET[2]:.3f})",
+            flush=True,
+        )
+    else:
+        detail = sent.stderr.strip() or sent.stdout.strip() or "ign service failed"
+        print(f"Camera view not moved: {detail}", flush=True)
+
+
 def start(args):
     RUNS.mkdir(parents=True, exist_ok=True)
     lock = (RUNS / "lock").open("w")
@@ -277,13 +338,16 @@ def start(args):
                 "--strictPort",
             ],
         )
+        pose = None
         while time.monotonic() < deadline and not stopped:
             alive()
             try:
                 with urlopen(
                     f"http://127.0.0.1:{args.port}/api/status", timeout=1
                 ) as response:
-                    if json.load(response)["ready"]:
+                    status = json.load(response)
+                    if status["ready"]:
+                        pose = status.get("pose")
                         break
             except (OSError, ValueError, KeyError):
                 time.sleep(0.2)
@@ -296,6 +360,7 @@ def start(args):
             f"OutdoorNav is ready: {state['web_url']}\nLogs: {logs}\nCtrl+C or ./nav down to stop.",
             flush=True,
         )
+        aim_camera(env, pose)
         unhealthy_since, checked = None, 0.0
         while not stopped:
             alive()
