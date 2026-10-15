@@ -17,6 +17,10 @@ from .processes import identity, matches, stop_owned
 from .state import ACTIVE, RUNS, active, write_json
 
 
+class RenderStartupError(RuntimeError):
+    """The GL probe passed, but Gazebo could not create its actual context."""
+
+
 def check_port(port):
     # WSL port forwarding may release a stopped listener just after its PID exits.
     for attempt in range(11):
@@ -170,7 +174,31 @@ def start(args):
         write_json(directory / "run.json", state)
         return child
 
+    render_offset, render_tail = 0, ""
+
     def alive():
+        nonlocal render_offset, render_tail
+        simulation_log = logs / "simulation.log"
+        if simulation_log.is_file():
+            with simulation_log.open(errors="replace") as stream:
+                stream.seek(render_offset)
+                output = render_tail + stream.read()
+                render_offset = stream.tell()
+            render_tail = output[-256:]
+            if any(
+                message in output
+                for message in (
+                    "Failed to create OpenGL context",
+                    "D3D12: Removing Device",
+                    "Unable to create the rendering window",
+                )
+            ):
+                error = (
+                    RenderStartupError
+                    if not state["ready"] and renderer == "hardware"
+                    else RuntimeError
+                )
+                raise error(f"Gazebo rendering failed; see {simulation_log}")
         for name, child in children.items():
             if name != "health" and child.poll() is not None:
                 raise RuntimeError(

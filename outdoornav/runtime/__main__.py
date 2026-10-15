@@ -14,7 +14,7 @@ from outdoornav.bundle import ROOT, load_bundle
 from .build import build
 from .environment import data_python, doctor, ros_environment
 from .processes import matches
-from .run import start, down
+from .run import RenderStartupError, start, down
 from .state import RUNS, active
 
 
@@ -84,7 +84,13 @@ def main():
         elif args.command == "up":
             if not 1 <= args.port <= 65535:
                 raise ValueError("Web port must be 1..65535")
-            start(args)
+            try:
+                start(args)
+            except RenderStartupError as error:
+                if args.render != "auto":
+                    raise
+                print(f"{error}\nRetrying with software rendering.", flush=True)
+                start(argparse.Namespace(**{**vars(args), "render": "software"}))
         elif args.command == "down":
             down()
         elif args.command == "status":
