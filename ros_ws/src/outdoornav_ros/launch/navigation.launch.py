@@ -1,4 +1,4 @@
-"""Nav2 and the unique goal/task owner, with task-level road constraints."""
+"""Nav2 sensor costmaps and the unique reference-route goal/task owner."""
 
 import json
 from pathlib import Path
@@ -32,26 +32,21 @@ def nodes(context):
         raise ValueError(
             "RPP minimum lookahead must exceed arrival tolerance when heading alignment is enabled"
         )
-    # Costmap filters run after ordinary plugins. Inflate the route boundary
-    # after KeepoutFilter as well, using the existing inflation settings.
+    # Only sensor-derived motion predictions augment the observed map. Road
+    # selection remains a reference route, not a costmap occupancy prior.
     for name in ("global_costmap", "local_costmap"):
         costmap_params = effective[name][name]["ros__parameters"]
-        costmap_params["filters"].extend(
-            (["motion_prediction"] if name == "global_costmap" else [])
-            + ["route_inflation"]
-        )
-        if name == "local_costmap":
-            costmap_params["route_keepout"]["filter_info_topic"] = (
-                "/navigation/local_keepout_info"
-            )
-        else:
+        # rcl rejects an untyped empty YAML sequence (filters: []). Omit it on
+        # the local map so Costmap2DROS uses its empty string-vector default.
+        costmap_params.pop("filters", None)
+        if name == "global_costmap":
+            costmap_params["filters"] = ["motion_prediction"]
             costmap_params["motion_prediction"] = {
                 "plugin": "nav2_costmap_2d::KeepoutFilter",
                 "enabled": True,
                 "filter_info_topic": "/navigation/prediction_info",
                 "transform_tolerance": 0.5,
             }
-        costmap_params["route_inflation"] = dict(costmap_params["inflation_layer"])
     global_params = effective["global_costmap"]["global_costmap"]["ros__parameters"]
     global_params.update(
         width=int(round(grid["width"] * grid["resolution"])),

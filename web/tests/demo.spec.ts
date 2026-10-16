@@ -106,3 +106,19 @@ for (const size of [
     });
   });
 }
+
+test("A/B planning draws intermediate route waypoints", async ({ page }) => {
+  const goal = campus.roads[0].points.at(-1)!;
+  await planRoute(page, start, goal);
+  await expect(page.getByTestId("planned-route")).toBeAttached();
+  await expect
+    .poll(() => page.getByTestId("route-waypoint").count())
+    .toBeGreaterThan(0);
+  const marker = page.getByTestId("route-waypoint").first();
+  await expect(marker).toHaveAttribute("aria-label", /途经点/);
+  await marker.focus();
+  await expect(page.getByTestId("ab-message")).toContainText("途经点");
+  await expect(
+    page.locator("details").filter({ hasText: "规划途经点" }),
+  ).toBeAttached();
+});

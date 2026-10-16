@@ -118,6 +118,11 @@ def nodes(context):
         ),
         Node(
             package="outdoornav_ros",
+            executable="depth_display",
+            parameters=[common],
+        ),
+        Node(
+            package="outdoornav_ros",
             executable="depth_points",
             parameters=[common, {"emit_far_points": True, "far_clip": 8.0}],
         ),

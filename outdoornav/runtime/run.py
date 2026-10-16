@@ -205,6 +205,7 @@ def start(args):
     )
     children, handles = {}, []
     stopped = False
+    startup_complete = False
 
     def request_stop(*_):
         nonlocal stopped
@@ -256,7 +257,7 @@ def start(args):
             ):
                 error = (
                     RenderStartupError
-                    if not state["ready"] and renderer == "hardware"
+                    if not startup_complete and renderer == "hardware"
                     else RuntimeError
                 )
                 raise error(f"Gazebo rendering failed; see {simulation_log}")
@@ -353,7 +354,9 @@ def start(args):
                 time.sleep(0.2)
         else:
             raise RuntimeError("Web proxy did not become ready")
+        startup_complete = True
         state["ready"] = True
+        state["degraded"] = False
         write_json(ACTIVE, state)
         write_json(directory / "run.json", state)
         print(
@@ -361,7 +364,7 @@ def start(args):
             flush=True,
         )
         aim_camera(env, pose)
-        unhealthy_since, checked = None, 0.0
+        checked = 0.0
         while not stopped:
             alive()
             now = time.monotonic()
@@ -374,27 +377,34 @@ def start(args):
                         observed = json.load(response)
                 except (OSError, ValueError):
                     observed = {"ready": False, "health": {"api": False}}
-                unhealthy_since = (
-                    (now if unhealthy_since is None else unhealthy_since)
-                    if not observed["ready"]
-                    else None
+                # Readiness gates new tasks, not the lifetime of the app. A
+                # task-level stop failure must leave the UI and evidence alive
+                # for inspection until Ctrl+C / nav down; never relaunch here.
+                state["last_navigation_status"] = observed
+                state["ready"] = observed.get("ready") is True
+                reason = (
+                    None
+                    if state["ready"]
+                    else "Navigation not ready: " + str(observed.get("health"))
                 )
-                # Controller cancellation and stop confirmation have a bounded
-                # 20-second cleanup budget. Keep the API alive to publish its
-                # terminal result before shutting down an unhealthy stack.
-                task_stopping = (observed.get("task") or {}).get("state") == "canceling"
-                health_deadline = 30 if task_stopping else 10
-                if (
-                    unhealthy_since is not None
-                    and now - unhealthy_since >= health_deadline
-                ):
-                    state["last_navigation_status"] = observed
-                    raise RuntimeError(
-                        "Component health lost: "
-                        + str(observed.get("health"))
-                        + "; see "
-                        + str(logs)
-                    )
+                previous_reason = state.get("degraded_reason")
+                state["degraded"] = reason is not None
+                if reason is not None:
+                    state.setdefault("degraded_since", time.time())
+                    state["degraded_reason"] = reason
+                    if reason != previous_reason:
+                        print(
+                            f"{reason}; keeping app alive for inspection. "
+                            "Ctrl+C or ./nav down to stop.",
+                            flush=True,
+                        )
+                else:
+                    state.pop("degraded_since", None)
+                    state.pop("degraded_reason", None)
+                    if previous_reason is not None:
+                        print("Navigation readiness recovered", flush=True)
+                write_json(ACTIVE, state)
+                write_json(directory / "run.json", state)
             time.sleep(0.2)
     except Exception as error:
         state["failure"] = str(error)

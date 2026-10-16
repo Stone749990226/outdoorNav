@@ -4,6 +4,7 @@
 import numpy as np
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
 
 
@@ -21,7 +22,10 @@ class DepthDisplay(Node):
             Image, self.get_parameter("output_topic").value, 5
         )
         self.create_subscription(
-            Image, self.get_parameter("input_topic").value, self.on_depth, 5
+            Image,
+            self.get_parameter("input_topic").value,
+            self.on_depth,
+            qos_profile_sensor_data,
         )
         self.get_logger().info(
             "深度显示：%s -> %s（假彩色，只给人看）"

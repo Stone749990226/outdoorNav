@@ -1,4 +1,4 @@
-"""Single task owner: standard NavigateToPose, constrained Nav2 and goal HTTP API."""
+"""Single task owner: NavigateToPose, sensor-only Nav2 and reference-route HTTP API."""
 
 import math
 import os
@@ -26,8 +26,8 @@ from tf2_ros import Buffer, TransformListener
 from unique_identifier_msgs.msg import UUID
 
 from outdoornav.api import ApiError, serve
-from outdoornav.bundle import is_free, load_bundle, masks, route_mask
-from outdoornav.routing import plan_route, validate_point
+from outdoornav.bundle import is_free, load_bundle, masks
+from outdoornav.routing import RouteGuidance, plan_route, validate_point
 from outdoornav.tasks import TaskStore, TERMINAL, ProgressBudget
 from .maps import LATCHED, Maps
 from .obstacles import Obstacles
@@ -68,6 +68,8 @@ class Navigation(Node):
         self.declare_parameter("bundle", "")
         self.bundle_path = self.get_parameter("bundle").value
         self.bundle = load_bundle(self.bundle_path)
+        # Scene geometry validates API goals and fixture placement only; it is not
+        # an occupancy prior for either Nav2 costmap.
         self.free = masks(self.bundle_path)
         self.tasks = TaskStore(
             self.bundle["scene_version"], self.bundle["route_version"]
@@ -77,7 +79,7 @@ class Navigation(Node):
         self.steady = Clock(clock_type=ClockType.STEADY_TIME)
         self.tf = Buffer()
         self.tf_listener = TransformListener(self.tf, self)
-        self.maps = Maps(self, self.bundle, self.free)
+        self.maps = Maps(self, self.bundle)
         self.stats, self.lifecycle, self.lifecycle_pending = {}, {}, set()
         self.clock_value, self.clock_changed = None, 0.0
         self.clock_rewound = False
@@ -342,7 +344,6 @@ class Navigation(Node):
             > 0.25
         ):
             raise ValueError("Destination must lie on the measured road centerline")
-        route_mask(self.bundle, self.free, route, self.pose())
         return goal, blocked, route
 
     def preview(self, payload):
@@ -555,8 +556,13 @@ class Navigation(Node):
             await self.pause()
         return False
 
-    async def release_controller(self, requests):
-        """Resolve pending acceptances and cancel goals before releasing task ownership."""
+    async def release_controller(self, requests, results):
+        """Reuse original result futures, canceling only goals still in flight.
+
+        Humble's get_result_async() sends a NEW service request on every call.
+        Requerying every old, preempted goal at arrival can exhaust the shared
+        cleanup deadline even though those goals already returned terminal results.
+        """
         deadline = time.monotonic() + 5
         for pending in requests:
             while not pending.done() and time.monotonic() < deadline:
@@ -567,25 +573,90 @@ class Navigation(Node):
                 follower = pending.result()
                 if not follower.accepted:
                     continue
-                result = follower.get_result_async()
-                if result.done():
-                    continue
-                follower.cancel_goal_async()
-                while not result.done() and time.monotonic() < deadline:
-                    await self.pause()
+                result = results.get(pending)
+                if result is None:
+                    # An acceptance may arrive after execute() was interrupted.
+                    result = follower.get_result_async()
+                    results[pending] = result
                 if not result.done():
+                    follower.cancel_goal_async()
+                    while not result.done() and time.monotonic() < deadline:
+                        await self.pause()
+                if not result.done() or result.result().status not in (
+                    GoalStatus.STATUS_SUCCEEDED,
+                    GoalStatus.STATUS_CANCELED,
+                    GoalStatus.STATUS_ABORTED,
+                ):
                     return False
             except Exception:
                 return False
         return True
 
+    async def guided_path(self, guidance, window, position, task_id):
+        """Join sensor-costmap NavFn legs into one continuous RPP path.
+
+        Explicit starts prevent every leg from being planned from the robot.
+        Preserve the planner's obstacle detours; do not substitute road lines or
+        write the reference geometry into either costmap.
+        """
+        path = Path()
+        path.header.frame_id = "map"
+        path.header.stamp = self.get_clock().now().to_msg()
+        start = validate_point(position)
+        for offset, index in enumerate(window):
+            point = guidance.points[index]
+            request = ComputePathToPose.Goal()
+            request.goal.header = path.header
+            request.goal.pose.position.x = point["x"]
+            request.goal.pose.position.y = point["y"]
+            previous = guidance.points[max(0, index - 1)]
+            heading = math.atan2(point["y"] - previous["y"], point["x"] - previous["x"])
+            request.goal.pose.orientation.z = math.sin(heading / 2)
+            request.goal.pose.orientation.w = math.cos(heading / 2)
+            request.use_start = True
+            request.start.header = path.header
+            request.start.pose.position.x = start["x"]
+            request.start.pose.position.y = start["y"]
+            request.start.pose.orientation.w = 1.0
+            planner = await self.result(self.path_client.send_goal_async(request), task_id)
+            if not planner.accepted:
+                raise RuntimeError("Planner rejected the goal")
+            try:
+                result = await self.result(planner.get_result_async(), task_id)
+            except Exception:
+                planner.cancel_goal_async()
+                raise
+            leg = result.result.path.poses
+            if result.status != GoalStatus.STATUS_SUCCEEDED or len(leg) < 2:
+                # A sampled station may itself be occupied. Try the next station
+                # on the SAME straight edge, allowing NavFn to go around it.
+                # Never skip a bend or the window/final goal to obtain a shortcut.
+                if index not in guidance.bends and offset + 1 < len(window):
+                    next_point = guidance.points[window[offset + 1]]
+                    if math.hypot(next_point["x"] - start["x"], next_point["y"] - start["y"]) <= 4.1:
+                        continue
+                return None
+            # NavFn tolerance can end a leg near (not exactly on) a via point.
+            # Start the next leg at its ACTUAL end to avoid a disconnected join.
+            if path.poses:
+                path.poses.extend(leg[1:])
+            else:
+                path.poses.extend(leg)
+            end = path.poses[-1].pose.position
+            start = {"x": end.x, "y": end.y}
+        # Intermediate leg-end orientations must not make the controller stop.
+        for a, b in zip(path.poses, path.poses[1:]):
+            heading = math.atan2(b.pose.position.y - a.pose.position.y, b.pose.position.x - a.pose.position.x)
+            a.pose.orientation.z, a.pose.orientation.w = math.sin(heading / 2), math.cos(heading / 2)
+        return path
+
     async def execute(self, handle):
         task_id = bytes(handle.goal_id.uuid).hex()
-        follow_requests = []
+        follow_requests, follow_results = [], {}
         outcome, reason = "failed", None
         stop_confirmed, completion_pose = False, None
         try:
-            # A successor cannot activate a mask or command while its predecessor is stopping.
+            # A successor cannot command while its predecessor is stopping.
             while True:
                 if self.stop_failure:
                     raise RuntimeError(self.stop_failure)
@@ -607,24 +678,11 @@ class Navigation(Node):
                 state["goal"],
                 state["blocked_road_ids"],
             )
-            goal_point = route["goal"]
-            self.maps.activate(route_mask(self.bundle, self.free, route, self.pose()))
+            goal_point = state["goal"]
+            guidance = RouteGuidance(route["reference_path"], self.pose(), goal_point)
             self.tasks.update(task_id, reference_path=route["reference_path"])
-            began = time.monotonic()
-            while not (
-                self.maps.applied(self.global_map, self.tf)
-                and self.maps.applied(self.local_map, self.tf)
-            ):
-                if self.interrupted(task_id):
-                    raise InterruptedError(
-                        "Task canceled while activating road constraints"
-                    )
-                if time.monotonic() - began > 15:
-                    raise RuntimeError(
-                        "Costmaps did not acknowledge the selected road constraints"
-                    )
-                await self.pause(0.1)
             current_points, follow_result = [], None
+            sent_window = None
             last_plan, last_send = -math.inf, -math.inf
             budget = ProgressBudget()
             started_sim = self.get_clock().now().nanoseconds / 1e9
@@ -638,6 +696,8 @@ class Navigation(Node):
                 now = self.get_clock().now().nanoseconds / 1e9
                 position = self.pose()
                 budget.moved(position["x"], position["y"], now)
+                window = guidance.window(position)
+                guidance_changed = window != sent_window
                 remaining = math.dist(
                     (position["x"], position["y"]), (goal_point["x"], goal_point["y"])
                 )
@@ -655,14 +715,16 @@ class Navigation(Node):
                 ) = math.sin(position["yaw"] / 2), math.cos(position["yaw"] / 2)
                 feedback.distance_remaining = remaining
                 handle.publish_feedback(feedback)
-                if (
-                    follow_result is not None
-                    and follow_result.done()
-                    and follow_result.result().status == GoalStatus.STATUS_SUCCEEDED
-                    and remaining <= 0.25
-                ) or (not current_points and remaining <= 0.25):
+                if guidance.final_leg and remaining <= 0.25 and (
+                    not current_points
+                    or (
+                        follow_result is not None
+                        and follow_result.done()
+                        and follow_result.result().status == GoalStatus.STATUS_SUCCEEDED
+                    )
+                ):
                     self.stopping = True
-                    if not await self.release_controller(follow_requests):
+                    if not await self.release_controller(follow_requests, follow_results):
                         raise RuntimeError("Could not release controller at arrival")
                     if not await self.confirm_stop():
                         raise RuntimeError("Could not confirm robot stop at arrival")
@@ -688,54 +750,31 @@ class Navigation(Node):
                         "Navigation exceeded the 1800 simulation-second task limit"
                     )
                 if follow_result is not None and follow_result.done():
+                    ended = follow_result.result().status
                     current_points, follow_result = [], None
-                    if not budget.controller_ended(now):
+                    # Only the CURRENT action can spend the failure budget. Old
+                    # preempted futures are deliberately not polled. Reaching a
+                    # temporary horizon is not a controller failure either.
+                    if ended != GoalStatus.STATUS_SUCCEEDED and not budget.controller_ended(now):
                         raise RuntimeError(
                             "Controller could not make progress on this road"
                         )
-                if now - last_plan >= 1.0:
+                if not current_points or guidance_changed or now - last_plan >= 1.0:
                     last_plan = now
-                    request = ComputePathToPose.Goal()
-                    request.goal.header.frame_id = "map"
-                    request.goal.header.stamp = self.get_clock().now().to_msg()
-                    request.goal.pose.position.x, request.goal.pose.position.y = (
-                        goal_point["x"],
-                        goal_point["y"],
-                    )
-                    if len(route["reference_path"]) >= 2:
-                        a, b = route["reference_path"][-2:]
-                        heading = math.atan2(b["y"] - a["y"], b["x"] - a["x"])
-                    else:
-                        heading = position["yaw"]
-                    request.goal.pose.orientation.z, request.goal.pose.orientation.w = (
-                        math.sin(heading / 2),
-                        math.cos(heading / 2),
-                    )
-                    request.use_start = False
-                    planner = await self.result(
-                        self.path_client.send_goal_async(request), task_id
-                    )
-                    if not planner.accepted:
-                        raise RuntimeError("Planner rejected the constrained goal")
-                    try:
-                        result = await self.result(planner.get_result_async(), task_id)
-                    except Exception:
-                        planner.cancel_goal_async()
-                        raise
-                    path = result.result.path
+                    path = await self.guided_path(guidance, window, position, task_id)
                     points = [
                         {"x": p.pose.position.x, "y": p.pose.position.y}
                         for p in path.poses
-                    ]
-                    if result.status != GoalStatus.STATUS_SUCCEEDED or len(points) < 2:
+                    ] if path is not None else []
+                    if len(points) < 2:
                         if not budget.planned(False):
                             raise RuntimeError(
-                                "No traversable path inside the selected road corridor"
+                                "No traversable path in the sensor costmap"
                             )
                         await self.pause(0.2)
                         continue
                     budget.planned(True)
-                    if current_points and follow_result and not follow_result.done():
+                    if not guidance_changed and current_points and follow_result and not follow_result.done():
                         if not self.path_obstructed(current_points, position) and (
                             now - last_send < 6
                             or (
@@ -769,7 +808,9 @@ class Navigation(Node):
                     if not follower.accepted:
                         raise RuntimeError("Controller rejected the planned path")
                     follow_result = follower.get_result_async()
+                    follow_results[pending] = follow_result
                     current_points, last_send = points, now
+                    sent_window = window
                     revision = (
                         self.tasks.snapshot(task_id, include_paths=False)[
                             "path_revision"
@@ -801,7 +842,7 @@ class Navigation(Node):
                 if self.clock_rewound:
                     outcome, reason = "failed", "Simulation clock moved backward"
                 self.stopping = True
-                released = await self.release_controller(follow_requests)
+                released = await self.release_controller(follow_requests, follow_results)
                 stopped = stop_confirmed or await self.confirm_stop()
                 if not released or not stopped:
                     self.stop_failure = (

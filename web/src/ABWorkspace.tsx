@@ -194,11 +194,69 @@ export function ABWorkspace() {
     status: result?.error ? "blocked" : result?.plan ? "ready" : "idle",
     position: a ?? home,
   };
-  const execution = compatible(navigation.status)
-    ? (navigation.status?.task?.execution_path ?? [])
-    : [];
+  const currentTask = compatible(navigation.status)
+    ? navigation.status?.task
+    : null;
+  const execution = currentTask?.execution_path ?? [];
+  const taskReference = (currentTask?.reference_path ?? []).map(mapToSvg);
+  const waypoints = result?.waypoints ?? extractWaypoints(taskReference);
+  const displayedGoal = b ?? (currentTask ? mapToSvg(currentTask.goal) : null);
   const overlay = (markerScale: number) => (
     <g pointerEvents="none">
+      {!result?.plan && taskReference.length > 1 && layers.route && (
+        <path
+          data-testid="task-reference-route"
+          d={pathD(taskReference)}
+          fill="none"
+          stroke="#83efb7"
+          strokeWidth="4"
+          vectorEffect="non-scaling-stroke"
+        />
+      )}
+      {layers.route &&
+        waypoints.map((waypoint, index) => {
+          if (
+            waypoint.reasons.includes("start") ||
+            waypoint.reasons.includes("goal")
+          )
+            return null;
+          const important = waypoint.reasons.some(
+            (reason) => reason !== "geometry",
+          );
+          const description = `途经点 ${index + 1} · ${waypoint.name} · ${coordinate(waypoint.point)}`;
+          return (
+            <g
+              key={`waypoint-${index}`}
+              data-testid="route-waypoint"
+              data-x={waypoint.point.x}
+              data-y={waypoint.point.y}
+              transform={`translate(${waypoint.point.x} ${waypoint.point.y}) scale(${markerScale})`}
+              pointerEvents="auto"
+              role="img"
+              tabIndex={0}
+              aria-label={description}
+              onClick={(event) => {
+                event.stopPropagation();
+                setMessage(description);
+              }}
+              onFocus={() => setMessage(description)}
+            >
+              <title>{description}</title>
+              <circle r="12" fill="transparent" />
+              <circle
+                r={important ? 7 : 4}
+                fill="#83efb7"
+                stroke="#202c2a"
+                strokeWidth="2"
+              />
+              {important && (
+                <text y="3.5" textAnchor="middle" fill="#122918" fontSize="9">
+                  {index + 1}
+                </text>
+              )}
+            </g>
+          );
+        })}
       {obstacles.items.map((item) => {
         const center = mapToSvg(item.position);
         return (
@@ -249,7 +307,7 @@ export function ABWorkspace() {
           vectorEffect="non-scaling-stroke"
         />
       )}
-      {[a, b].map(
+      {[a, displayedGoal].map(
         (p, i) =>
           p && (
             <g
@@ -421,11 +479,25 @@ export function ABWorkspace() {
           }}
         />
         <h3>路线与导出</h3>
-        <p>绿色：参考路线 · 蓝色：Nav2 执行路径</p>
+        <p>绿色及圆点：道路参考路线与途经点 · 蓝色虚线：Nav2 当前执行路径</p>
+        {waypoints.length > 0 && (
+          <details>
+            <summary>规划途经点（{waypoints.length}）</summary>
+            <ol>
+              {waypoints.map((waypoint, index) => (
+                <li key={index}>
+                  {waypoint.name} · {coordinate(waypoint.point)}
+                </li>
+              ))}
+            </ol>
+          </details>
+        )}
         <p>
           {result?.plan
             ? `${(result.plan.length * scale).toFixed(1)} m · ${result.waypoints.length} 个途经点`
-            : "尚未规划"}
+            : taskReference.length > 1
+              ? `当前任务参考路线 · ${waypoints.length} 个途经点`
+              : "尚未规划"}
         </p>
         <button
           title="播放 A/B 预览"

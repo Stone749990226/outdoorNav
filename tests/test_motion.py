@@ -21,6 +21,17 @@ class MotionTests(unittest.TestCase):
         tracker.observe([face], 0.1)
         self.assertEqual(tracker.envelopes(0.1), [])
 
+    def test_no_prediction_does_not_claim_free_space(self):
+        grid = {"width": 240, "height": 240, "origin": [-12, -12], "resolution": 0.1}
+        mask = prediction_mask(grid, [])
+        self.assertEqual(mask.dtype, np.int8)
+        self.assertTrue(np.all(mask == -1))
+        # A live envelope still adds cost, while cells outside it remain no-ops.
+        mask = prediction_mask(grid, [(np.array([1., 1.]), np.array([2., 2.]))])
+        self.assertGreater(np.count_nonzero(mask == 80), 0)
+        self.assertTrue(np.all(np.isin(mask, [-1, 80])))
+        self.assertEqual(mask[0, 0], -1)
+
     def test_separate_clusters_and_raster_bounds(self):
         groups = scan_clusters([[0, 0], [0.1, 0], [2, 1], [2, 1.1]])
         self.assertEqual(len(groups), 2)
@@ -28,12 +39,12 @@ class MotionTests(unittest.TestCase):
         mask = prediction_mask(grid, [(np.array([-0.5, -0.5]), np.array([0.3, 0.3]))])
         self.assertGreater(mask[0, 0], 60)
         self.assertLess(mask[0, 0], 99)
-        self.assertEqual(mask[-1, -1], 0)
+        self.assertEqual(mask[-1, -1], -1)
         # An off-map prediction must not wrap around into the opposite grid edge.
         empty = prediction_mask(
             grid, [(np.array([-2.0, -2.0]), np.array([-0.1, -0.1]))]
         )
-        self.assertEqual(np.count_nonzero(empty), 0)
+        self.assertTrue(np.all(empty == -1))
 
 
 if __name__ == "__main__":

@@ -86,7 +86,9 @@ class MotionTracker:
 
 
 def prediction_mask(grid, regions):
-    mask = np.zeros((grid["height"], grid["width"]), dtype=np.int8)
+    # No prediction means no information, not measured free space. KeepoutFilter
+    # skips -1 but replaces UNKNOWN in the master map even with a mask value of 0.
+    mask = np.full((grid["height"], grid["width"]), -1, dtype=np.int8)
     resolution = grid["resolution"]
     origin = np.asarray(grid["origin"])
     for lower, upper in regions:

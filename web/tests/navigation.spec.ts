@@ -18,6 +18,9 @@ const versions = {
 test("online planning uses robot pose; execution, replacement and cancellation use task IDs", async ({
   page,
 }) => {
+  // Keep the small 2 m target visible and give the 0.1 m assertion adequate
+  // screen resolution; zooming about the campus center would clip this endpoint.
+  await page.setViewportSize({ width: 1920, height: 1080 });
   const requests: { path: string; body: any }[] = [];
   let task: any = null;
   await page.route("**/api/**", async (route) => {
@@ -145,6 +148,8 @@ test("mismatched scene prevents execution and explains rebuild", async ({
 test("map interaction adds static and moving obstacles and deletes them", async ({
   page,
 }) => {
+  // Keep the 0.15 m click-coordinate check above pixel quantization noise.
+  await page.setViewportSize({ width: 1920, height: 1080 });
   let items: any[] = [];
   const creations: any[] = [];
   await page.route("**/api/**", async (route) => {
@@ -216,4 +221,51 @@ test("map interaction adds static and moving obstacles and deletes them", async 
       .first()
       .click();
   await expect(page.getByTestId("scene-obstacle")).toHaveCount(0);
+});
+
+test("refreshing an active task restores reference route and waypoint markers", async ({
+  page,
+}) => {
+  const reference = bundle.network.roads[0].points;
+  const task = {
+    task_id: "f".repeat(32),
+    state: "navigating",
+    goal: reference.at(-1),
+    blocked_road_ids: [],
+    path_revision: 2,
+    reference_path: reference,
+    execution_path: reference.slice(0, 2),
+    distance_remaining_m: 20,
+    reason: null,
+  };
+  await page.route("**/api/status", (route) =>
+    route.fulfill({
+      json: {
+        ...versions,
+        ready: true,
+        run_id: "reference-refresh",
+        localization: "ok",
+        health: {},
+        pose,
+        task,
+      },
+    }),
+  );
+  await page.route("**/api/obstacles", (route) =>
+    route.fulfill({ json: { obstacles: [] } }),
+  );
+  for (let visit = 0; visit < 2; visit++) {
+    await page.goto("/");
+    await page.getByRole("button", { name: "A→B 规划", exact: true }).click();
+    await expect(page.getByTestId("task-reference-route")).toBeAttached();
+    await expect(page.getByTestId("execution-route")).toBeAttached();
+    await expect(page.getByTestId("ab-b")).toBeAttached();
+    await expect
+      .poll(() => page.getByTestId("route-waypoint").count())
+      .toBeGreaterThan(0);
+    await expect(page.getByTestId("task-reference-route")).not.toHaveAttribute(
+      "d",
+      (await page.getByTestId("execution-route").getAttribute("d")) ?? "",
+    );
+  }
 });
