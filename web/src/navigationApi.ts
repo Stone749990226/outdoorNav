@@ -51,7 +51,7 @@ export type RoutePreview = {
   reference_path: Point[];
   segment_roads: string[];
   road_ids: string[];
-  length_m: number;
+  length_m: number | null;
 };
 export const terminal = (task: NavigationTask | null) =>
   !task || ["succeeded", "failed", "canceled"].includes(task.state);
@@ -98,6 +98,7 @@ const payload = (goal: Point, blocked: string[]) => ({
   route_version: bundle.route_version,
   goal: toMap(goal),
   blocked_road_ids: blocked,
+  request_id: crypto.randomUUID().replaceAll("-", ""),
 });
 export const getStatus = (signal?: AbortSignal) =>
   request<NavigationStatus>("/api/status", "GET", undefined, signal);

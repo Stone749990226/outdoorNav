@@ -1,0 +1,13 @@
+{
+  "integration": "existing_navigation",
+  "navigation_provider_id": "nav2",
+  "mapping_provider_id": "mapping",
+  "odometry_provider_id": "lynx_quadruped",
+  "scan_topic": "/scanner/scan",
+  "antenna_xy_m": [0.0, 0.0],
+  "antenna_offset_confirmed": false,
+  "motion_enabled": false,
+  "arrival_tolerance_m": 0.5,
+  "gnss_udp_port": 18765,
+  "http_port": 8765
+}

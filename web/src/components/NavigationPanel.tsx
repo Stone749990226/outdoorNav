@@ -64,8 +64,10 @@ export function NavigationPanel({
       </small>
       {match && status?.task && (
         <small>
-          路径版本 {status.task.path_revision} ·{" "}
-          {status.task.distance_remaining_m?.toFixed(1) ?? "—"} m
+          {status.mode === "lynx"
+            ? "任务状态"
+            : `路径版本 ${status.task.path_revision}`}{" "}
+          · {status.task.distance_remaining_m?.toFixed(1) ?? "—"} m
           {status.task.reason && <span> · {status.task.reason}</span>}
         </small>
       )}
@@ -88,7 +90,8 @@ export function NavigationPanel({
                 ([key]) =>
                   ({
                     localization: "定位",
-                    calibration: "现场标定",
+                    calibration: "地理坐标对齐",
+                    antenna_extrinsics: "天线安装偏移确认",
                     motion_enabled: "运动开关",
                     service_active: "导航服务未激活",
                     controller_stopped: "停车确认",

@@ -109,7 +109,11 @@ export function ABWorkspace() {
     useState<ObstacleSelection>(null);
   const [obstacleStart, setObstacleStart] = useState<Point | null>(null);
   const [obstacleEnd, setObstacleEnd] = useState<Point | null>(null);
-  const liveStart = pose ? snap(mapToSvg(pose))?.point : null;
+  const liveStart = pose
+    ? hardware
+      ? mapToSvg(pose)
+      : snap(mapToSvg(pose))?.point
+    : null;
   useEffect(() => {
     if (liveStart) {
       setA(liveStart);
@@ -145,6 +149,12 @@ export function ABWorkspace() {
       setMessage("障碍物位置已选择，可在右侧添加到 Gazebo");
       return;
     }
+    if (hardware) {
+      invalidate();
+      setB(point);
+      setMessage("目标已选择；由山猫现有导航规划，不要求在预设道路上");
+      return;
+    }
     if (blockMode) return;
     const projected = snap(point),
       open = projected && snap(projected.point, blocked);
@@ -158,26 +168,6 @@ export function ABWorkspace() {
       return;
     }
     invalidate();
-    if (hardware) {
-      const near = places.reduce<SemanticPlace | null>(
-        (best, item) =>
-          !best || dist(mapToSvg(item), point) < dist(mapToSvg(best), point)
-            ? item
-            : best,
-        null,
-      );
-      if (!near || dist(mapToSvg(near), point) > tolerance) {
-        setMessage("实机导航请选择地图上已标注的停车点");
-        return;
-      }
-      setB(mapToSvg(near));
-      setMessage(
-        near.enabled
-          ? `已选择 ${near.name}`
-          : `${near.name}：待现场确认，暂不可执行`,
-      );
-      return;
-    }
     if (!online && selection === "a") {
       setA(projected.point);
       setSelection("b");
@@ -185,7 +175,20 @@ export function ABWorkspace() {
     setMessage("目标已选择，请规划路线");
   };
   const compute = async () => {
-    if (!a || !b) return;
+    if (!b || (!a && !hardware)) return;
+    if (hardware) {
+      setBusy(true);
+      try {
+        await previewRoute(b, []);
+        setMessage("目标格式有效；实际可达性由现有导航在执行时规划检查");
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "目标检查失败");
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+    if (!a) return;
     const token = ++generation.current;
     setBusy(true);
     try {
@@ -242,9 +245,6 @@ export function ABWorkspace() {
   const taskReference = (currentTask?.reference_path ?? []).map(mapToSvg);
   const waypoints = result?.waypoints ?? extractWaypoints(taskReference);
   const displayedGoal = b ?? (currentTask ? mapToSvg(currentTask.goal) : null);
-  const enabledGoal =
-    !hardware ||
-    (!!b && places.some((p) => p.enabled && dist(mapToSvg(p), b) < 1));
   const overlay = (markerScale: number) => (
     <g pointerEvents="none">
       {places.map((place) => {
@@ -469,11 +469,11 @@ export function ABWorkspace() {
         <button
           className="primary ab-plan"
           data-testid="plan-ab"
-          disabled={!a || !b || busy}
+          disabled={!b || (!hardware && !a) || busy}
           onClick={() => void compute()}
         >
           <Route size={16} />
-          {busy ? "规划中…" : "规划 A→B"}
+          {busy ? "处理中…" : hardware ? "检查目标" : "规划 A→B"}
         </button>
         {hardware && (
           <label>
@@ -511,30 +511,33 @@ export function ABWorkspace() {
           error={navigation.error}
           busy={navigation.busy}
           canExecute={
-            enabledGoal &&
             !!b &&
-            !!result?.plan &&
-            result.plan.length * scale > 0
+            (hardware || (!!result?.plan && result.plan.length * scale > 0))
           }
-          onExecute={() => b && void navigation.execute(b, blocked)}
+          onExecute={() =>
+            b && void navigation.execute(b, hardware ? [] : blocked)
+          }
           onCancel={() => void navigation.cancel()}
         />
-        <button
-          onClick={() => setBlockMode((v) => !v)}
-          className={blockMode ? "active" : ""}
-        >
-          封闭或恢复道路
-        </button>
-        {roads.map((r) => (
+        {!hardware && (
           <button
-            key={r.id}
-            data-testid={`toggle-${r.id}`}
-            onClick={() => closeRoad(r.id)}
+            onClick={() => setBlockMode((v) => !v)}
+            className={blockMode ? "active" : ""}
           >
-            {blocked.includes(r.id) ? "恢复" : "封闭"}
-            {r.name}
+            封闭或恢复道路
           </button>
-        ))}
+        )}
+        {!hardware &&
+          roads.map((r) => (
+            <button
+              key={r.id}
+              data-testid={`toggle-${r.id}`}
+              onClick={() => closeRoad(r.id)}
+            >
+              {blocked.includes(r.id) ? "恢复" : "封闭"}
+              {r.name}
+            </button>
+          ))}
         <button
           onClick={() => {
             invalidate();

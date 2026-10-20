@@ -1,7 +1,8 @@
 # 山猫室外接入
 
-本仓库新增独立室外运行配置，复用现有有序路线执行器，使用 NavFn、DWB、速度平滑和独立速度看门狗。
-Robonix 核心和机器人现有 NTRIP 文件无需修改。室外运行时必须停用原 nav2 和 mapping，不能同时启动两个导航执行器或两个 `map→odom` 发布者。
+> **当前接入路径已改为复用山猫现有导航**，见 `deploy/lynx/EXISTING_NAVIGATION.md`。
+> 本文下述“替换原 nav2/mapping、自行发布 TF 与速度”的独立方案仅保留作参考和仿真，
+> 不得作为山猫实机接入路径，也不得由 Robonix 包启动。
 
 ## 构建与接入
 
@@ -18,7 +19,7 @@ GNSS 仍使用 `/home/nvidia/ntrip/.venv`。`gnss_stream.py` 取得原 `client.l
 保留 NTRIP 补发 GGA 和串口唯一读取；通过本机 UDP 把接收机原始数据交给定位节点。
 不要同时运行原 `ntrip/start.sh`。凭据不进入本仓库。
 
-在山猫主工程的 `robonix_manifest.yaml` 中，用以下条目替换原 nav2、mapping 服务；保留底盘、雷达和机身 TF：
+旧方案（不再采用）：下述清单条目会替换原 nav2、mapping。现行做法是保留原服务，只新增室外应用服务。
 
 ```yaml
 service:

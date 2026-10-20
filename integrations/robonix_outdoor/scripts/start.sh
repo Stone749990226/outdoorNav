@@ -12,7 +12,7 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM
-bash "$task_root/deploy/lynx/start.sh" &
+bash "$task_root/deploy/lynx/start_existing.sh" &
 task_stack_pid=$!
 "$OUTDOORNAV_PYTHON" "$task_pkg/bridge.py" &
 task_bridge_pid=$!
