@@ -15,6 +15,8 @@ import { PatrolStatus } from "./components/PatrolStatus";
 import { PatrolTasks } from "./components/PatrolTasks";
 import { usePatrol } from "./hooks/usePatrol";
 import { startDemo } from "./simulation";
+import { useEffect } from "react";
+import { getStatus } from "./navigationApi";
 
 export default function App() {
   const patrol = usePatrol();
@@ -42,6 +44,17 @@ export default function App() {
     setHelp,
     help,
   } = patrol;
+  useEffect(() => {
+    let active = true;
+    void getStatus()
+      .then((status) => {
+        if (active && status.mode === "lynx") setWorkspaceMode("ab");
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [setWorkspaceMode]);
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -69,7 +82,7 @@ export default function App() {
         </nav>
         <span className="simulation-badge">
           <span className="live-dot" />
-          SIMULATION
+          FIELD NAV
         </span>
       </header>
       <div className="page-heading">

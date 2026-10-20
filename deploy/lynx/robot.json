@@ -1,0 +1,16 @@
+{
+  "calibrated": false,
+  "initial_heading_rad": 0.0,
+  "antenna_xy_m": [0.0, 0.0],
+  "map_offset_xy_m": [0.0, 0.0],
+  "road_widths_m": {},
+  "footprint_radius_m": 0.5,
+  "max_speed_mps": 0.15,
+  "odom_topic": "/ODOM",
+  "cloud_topic": "/airy_201/points",
+  "cloud_frame_confirmed": false,
+  "cloud_min_height_m": -0.2,
+  "cloud_max_height_m": 1.5,
+  "gnss_udp_port": 18765,
+  "motion_enabled": false
+}

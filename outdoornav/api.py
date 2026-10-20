@@ -30,11 +30,15 @@ def serve(backend, port=8765):
             try:
                 path = self.path.split("?", 1)[0]
                 if method == "GET":
+                    if path == "/api/places" and hasattr(backend, "places"):
+                        return self.respond(200, backend.places.snapshot())
                     if path == "/api/map":
                         return self.respond(200, backend.map_snapshot())
                     if path == "/api/status":
                         return self.respond(200, backend.status())
                     if path == "/api/obstacles":
+                        if backend.obstacles is None:
+                            return self.respond(200, {"obstacles": []})
                         return self.respond(
                             200, {"obstacles": backend.obstacles.snapshot()}
                         )
@@ -45,12 +49,21 @@ def serve(backend, port=8765):
                     match = re.fullmatch(r"/api/tasks/([a-f0-9]{32})/cancel", path)
                     if match:
                         return self.respond(202, backend.tasks.cancel(match[1]))
-                    if path in ("/api/plans", "/api/tasks", "/api/obstacles"):
+                    if path in ("/api/plans", "/api/tasks", "/api/obstacles", "/api/activation"):
                         size = int(self.headers.get("Content-Length", "0"))
                         if not 0 < size <= 65536:
                             raise ApiError(400, "JSON request must be 1..65536 bytes")
                         payload = json.loads(self.rfile.read(size))
+                        if path == "/api/activation":
+                            if not hasattr(backend, "set_active"):
+                                raise ApiError(404, "Activation is unavailable")
+                            if not isinstance(payload, dict) or type(payload.get("active")) is not bool:
+                                raise ValueError("active must be a boolean")
+                            backend.set_active(payload["active"])
+                            return self.respond(200, {"active": payload["active"]})
                         if path == "/api/obstacles":
+                            if backend.obstacles is None:
+                                raise ApiError(403, "Obstacle injection is only available in simulation")
                             if not isinstance(payload, dict):
                                 raise ValueError("Request must be an object")
                             if payload.get("frame_id") != "map":
@@ -67,6 +80,8 @@ def serve(backend, port=8765):
                         r"/api/obstacles/(test_[A-Za-z0-9_]{1,48})", path
                     )
                     if match:
+                        if backend.obstacles is None:
+                            raise ApiError(403, "Obstacle injection is only available in simulation")
                         return self.respond(200, backend.obstacles.delete(match[1]))
                 self.respond(404, {"error": "Unknown endpoint"})
             except ApiError as error:

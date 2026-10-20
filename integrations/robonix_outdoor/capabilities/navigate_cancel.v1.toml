@@ -1,0 +1,9 @@
+[contract]
+id = "robonix/service/outdoor/navigate/cancel"
+version = "1"
+kind = "service"
+idl = "outdoor/srv/Cancel.srv"
+description = "Outdoor navigation navigate/cancel"
+
+[mode]
+type = "rpc"

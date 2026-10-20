@@ -1,0 +1,9 @@
+[contract]
+id = "robonix/service/outdoor/places"
+version = "1"
+kind = "service"
+idl = "outdoor/srv/Places.srv"
+description = "Outdoor navigation places"
+
+[mode]
+type = "rpc"

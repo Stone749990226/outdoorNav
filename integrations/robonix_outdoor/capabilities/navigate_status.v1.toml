@@ -1,0 +1,9 @@
+[contract]
+id = "robonix/service/outdoor/navigate/status"
+version = "1"
+kind = "service"
+idl = "outdoor/srv/Status.srv"
+description = "Outdoor navigation navigate/status"
+
+[mode]
+type = "rpc"

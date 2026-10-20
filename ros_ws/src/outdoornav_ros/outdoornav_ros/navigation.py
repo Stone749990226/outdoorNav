@@ -63,14 +63,17 @@ def lateral_difference(a, b):
 
 
 class Navigation(Node):
-    def __init__(self):
+    def __init__(self, hardware=False):
         super().__init__("navigation")
+        self.hardware = hardware
+        self.base_frame = "base_link" if hardware else "base_footprint"
+        self.arrival_tolerance = 0.50 if hardware else 0.25
         self.declare_parameter("bundle", "")
         self.bundle_path = self.get_parameter("bundle").value
         self.bundle = load_bundle(self.bundle_path)
         # Scene geometry validates API goals and fixture placement only; it is not
         # an occupancy prior for either Nav2 costmap.
-        self.free = masks(self.bundle_path)
+        self.free = None if hardware else masks(self.bundle_path)
         self.tasks = TaskStore(
             self.bundle["scene_version"], self.bundle["route_version"]
         )
@@ -112,7 +115,9 @@ class Navigation(Node):
             )
             for name in ("planner_server", "controller_server")
         }
-        self.command_pub = self.create_publisher(Twist, "/cmd_vel", 10)
+        self.command_pub = self.create_publisher(
+            Twist, "/outdoor/safe_command" if hardware else "/cmd_vel", 10
+        )
         self.path_pub = self.create_publisher(
             Path, "/navigation/execution_path", LATCHED
         )
@@ -169,9 +174,11 @@ class Navigation(Node):
         self.create_timer(
             1.0, self.poll_lifecycle, clock=self.steady, callback_group=self.group
         )
-        self.obstacles = Obstacles(self, self.get_parameter("run_dir").value)
-        self.prediction = MotionPrediction(self)
-        self.http = serve(self)
+        self.obstacles = None
+        if not hardware:
+            self.obstacles = Obstacles(self, self.get_parameter("run_dir").value)
+            self.prediction = MotionPrediction(self)
+        self.http = None if hardware else serve(self)
 
     def mark(self, key):
         with self.state_lock:
@@ -237,7 +244,7 @@ class Navigation(Node):
     def pose(self):
         try:
             transform = self.tf.lookup_transform(
-                "map", "base_footprint", rclpy.time.Time()
+                "map", self.base_frame, rclpy.time.Time()
             )
         except Exception:
             return None
@@ -627,6 +634,9 @@ class Navigation(Node):
                 planner.cancel_goal_async()
                 raise
             leg = result.result.path.poses
+            if self.hardware and guidance.final_leg and len(leg) == 1:
+                # A coincident destination still needs a path for final heading alignment.
+                leg = [request.start, *leg]
             if result.status != GoalStatus.STATUS_SUCCEEDED or len(leg) < 2:
                 # A sampled station may itself be occupied. Try the next station
                 # on the SAME straight edge, allowing NavFn to go around it.
@@ -649,6 +659,12 @@ class Navigation(Node):
             heading = math.atan2(b.pose.position.y - a.pose.position.y, b.pose.position.x - a.pose.position.x)
             a.pose.orientation.z, a.pose.orientation.w = math.sin(heading / 2), math.cos(heading / 2)
         return path
+
+    async def prepare_route(self, route, task_id):
+        pass
+
+    def arrival_heading_ok(self, position, goal):
+        return True
 
     async def execute(self, handle):
         task_id = bytes(handle.goal_id.uuid).hex()
@@ -678,6 +694,7 @@ class Navigation(Node):
                 state["goal"],
                 state["blocked_road_ids"],
             )
+            await self.prepare_route(route, task_id)
             goal_point = state["goal"]
             guidance = RouteGuidance(route["reference_path"], self.pose(), goal_point)
             self.tasks.update(task_id, reference_path=route["reference_path"])
@@ -715,7 +732,7 @@ class Navigation(Node):
                 ) = math.sin(position["yaw"] / 2), math.cos(position["yaw"] / 2)
                 feedback.distance_remaining = remaining
                 handle.publish_feedback(feedback)
-                if guidance.final_leg and remaining <= 0.25 and (
+                if guidance.final_leg and remaining <= self.arrival_tolerance and self.arrival_heading_ok(position, goal_point) and (
                     not current_points
                     or (
                         follow_result is not None
@@ -738,7 +755,7 @@ class Navigation(Node):
                         (goal_point["x"], goal_point["y"]),
                     )
                     self.tasks.update(task_id, distance_remaining_m=remaining)
-                    if remaining <= 0.25:
+                    if remaining <= self.arrival_tolerance and self.arrival_heading_ok(stopped_pose, goal_point):
                         outcome, stop_confirmed = "succeeded", True
                         completion_pose = stopped_pose
                         break
@@ -881,9 +898,11 @@ class Navigation(Node):
     def destroy_node(self):
         if rclpy.ok():
             self.command_pub.publish(Twist())
-        self.http.shutdown()
-        self.http.server_close()
-        self.obstacles.close()
+        if self.http is not None:
+            self.http.shutdown()
+            self.http.server_close()
+        if self.obstacles is not None:
+            self.obstacles.close()
         self.server.destroy()
         super().destroy_node()
 

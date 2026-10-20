@@ -3,6 +3,9 @@ from pathlib import Path
 from setuptools import setup
 
 entries = {
+    "lynx_localizer": "lynx_localizer",
+    "lynx_navigation": "lynx_navigation",
+    "lynx_watchdog": "lynx_watchdog",
     "rtk_sim": "rtk_sim",
     "wheel_odom_bridge": "odom_bridge",
     "absolute_localizer": "absolute_localizer",

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { bundle, toMap } from "../src/map";
+import { bundle, scale, toMap } from "../src/map";
 import { choose, shortGoal, start } from "./mapHelpers";
 
 const pose = {
@@ -101,12 +101,22 @@ test("online planning uses robot pose; execution, replacement and cancellation u
     y: Number(await page.getByTestId("ab-b").getAttribute("data-y")),
   };
   expect(submission.goal.x).toBeCloseTo(toMap(selected).x, 6);
+  // Browser pointer coordinates may be rounded to screen pixels. Bound the
+  // selection error by one diagonal pixel at the current map zoom.
+  const pixelTolerance = await page
+    .getByTestId("campus-map")
+    .evaluate((svg, meterScale) => {
+      const matrix = (
+        svg.querySelector(":scope > g") as SVGGElement
+      ).getScreenCTM()!;
+      return (Math.SQRT2 * meterScale) / Math.hypot(matrix.a, matrix.b);
+    }, scale);
   expect(
     Math.hypot(
       submission.goal.x - toMap(shortGoal).x,
       submission.goal.y - toMap(shortGoal).y,
     ),
-  ).toBeLessThan(0.1);
+  ).toBeLessThan(pixelTolerance);
   expect(Object.keys(submission).sort()).toEqual([
     "blocked_road_ids",
     "frame_id",

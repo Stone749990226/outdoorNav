@@ -18,7 +18,14 @@ import { useObstacles } from "./hooks/useObstacles";
 import { download, exportMap } from "./export";
 import { useNavigation } from "./hooks/useNavigation";
 import { dist, home, mapToSvg, pathD, roads, scale, toMeters } from "./map";
-import { compatible, previewRoute, type RoutePreview } from "./navigationApi";
+import {
+  compatible,
+  previewRoute,
+  getPlaces,
+  type SemanticPlace,
+  type RoutePreview,
+} from "./navigationApi";
+import placeData from "../../scenes/north_campus/places.json" with { type: "json" };
 import { snap } from "./planner";
 import { advance, initial } from "./simulation";
 import type { Point, Simulation } from "./types";
@@ -65,6 +72,19 @@ function referenceResult(route: RoutePreview): ABResult {
 
 export function ABWorkspace() {
   const navigation = useNavigation();
+  const [places, setPlaces] = useState<SemanticPlace[]>(placeData.places);
+  const hardware = navigation.status?.mode === "lynx";
+  useEffect(() => {
+    if (!hardware) return;
+    const controller = new AbortController();
+    void getPlaces(controller.signal)
+      .then((data) => {
+        if (data.route_version === navigation.status?.route_version)
+          setPlaces(data.places);
+      })
+      .catch(() => setPlaces([]));
+    return () => controller.abort();
+  }, [hardware, navigation.status?.route_version]);
   const [a, setA] = useState<Point | null>(null),
     [b, setB] = useState<Point | null>(null);
   const [selection, setSelection] = useState<"a" | "b">("a");
@@ -83,8 +103,8 @@ export function ABWorkspace() {
     compatible(navigation.status) &&
     navigation.status!.ready &&
     !!navigation.status!.pose;
-  const pose = online ? navigation.status!.pose : null;
-  const obstacles = useObstacles(online);
+  const pose = compatible(navigation.status) ? navigation.status!.pose : null;
+  const obstacles = useObstacles(online && !hardware);
   const [obstacleSelection, setObstacleSelection] =
     useState<ObstacleSelection>(null);
   const [obstacleStart, setObstacleStart] = useState<Point | null>(null);
@@ -138,6 +158,26 @@ export function ABWorkspace() {
       return;
     }
     invalidate();
+    if (hardware) {
+      const near = places.reduce<SemanticPlace | null>(
+        (best, item) =>
+          !best || dist(mapToSvg(item), point) < dist(mapToSvg(best), point)
+            ? item
+            : best,
+        null,
+      );
+      if (!near || dist(mapToSvg(near), point) > tolerance) {
+        setMessage("实机导航请选择地图上已标注的停车点");
+        return;
+      }
+      setB(mapToSvg(near));
+      setMessage(
+        near.enabled
+          ? `已选择 ${near.name}`
+          : `${near.name}：待现场确认，暂不可执行`,
+      );
+      return;
+    }
     if (!online && selection === "a") {
       setA(projected.point);
       setSelection("b");
@@ -149,9 +189,10 @@ export function ABWorkspace() {
     const token = ++generation.current;
     setBusy(true);
     try {
-      const next = online
-        ? referenceResult(await previewRoute(b, blocked))
-        : planAB(a, b, blocked);
+      const next =
+        online || (hardware && pose)
+          ? referenceResult(await previewRoute(b, blocked))
+          : planAB(a, b, blocked);
       if (generation.current !== token) return;
       next.blocked = [...blocked];
       setResult(next);
@@ -201,8 +242,49 @@ export function ABWorkspace() {
   const taskReference = (currentTask?.reference_path ?? []).map(mapToSvg);
   const waypoints = result?.waypoints ?? extractWaypoints(taskReference);
   const displayedGoal = b ?? (currentTask ? mapToSvg(currentTask.goal) : null);
+  const enabledGoal =
+    !hardware ||
+    (!!b && places.some((p) => p.enabled && dist(mapToSvg(p), b) < 1));
   const overlay = (markerScale: number) => (
     <g pointerEvents="none">
+      {places.map((place) => {
+        const p = mapToSvg(place);
+        return (
+          <g
+            key={place.id}
+            transform={`translate(${p.x} ${p.y}) scale(${markerScale})`}
+            pointerEvents="auto"
+            role="button"
+            tabIndex={0}
+            aria-label={`选择${place.name}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              invalidate();
+              setB(p);
+              setMessage(
+                place.enabled || !hardware
+                  ? `已选择 ${place.name}`
+                  : `${place.name}：待现场确认`,
+              );
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                invalidate();
+                setB(p);
+              }
+            }}
+          >
+            <circle
+              r="10"
+              fill={place.enabled || !hardware ? "#e8c989" : "#89949b"}
+            />
+            <text y="-16" textAnchor="middle" fill="#f4e8cf" fontSize="12">
+              {place.name}
+            </text>
+            <title>{place.note}</title>
+          </g>
+        );
+      })}
       {!result?.plan && taskReference.length > 1 && layers.route && (
         <path
           data-testid="task-reference-route"
@@ -349,7 +431,9 @@ export function ABWorkspace() {
         <p>
           {online
             ? "在线导航 · A 使用机器人当前位置"
-            : "离线模式 · 动画不驱动 Gazebo"}
+            : hardware
+              ? "山猫已连接 · 待定位和导航就绪"
+              : "离线模式 · 动画不驱动机器人"}
         </p>
         <button
           className="endpoint-card"
@@ -391,11 +475,47 @@ export function ABWorkspace() {
           <Route size={16} />
           {busy ? "规划中…" : "规划 A→B"}
         </button>
+        {hardware && (
+          <label>
+            地图目的地
+            <select
+              aria-label="地图目的地"
+              value={
+                places.find((p) => b && dist(mapToSvg(p), b) < 1)?.id ?? ""
+              }
+              onChange={(event) => {
+                const place = places.find((p) => p.id === event.target.value);
+                if (place) {
+                  invalidate();
+                  setB(mapToSvg(place));
+                  setMessage(
+                    place.enabled || !hardware
+                      ? `已选择 ${place.name}`
+                      : `${place.name}：待现场确认`,
+                  );
+                }
+              }}
+            >
+              <option value="">请选择目的地</option>
+              {places.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                  {hardware && !p.enabled ? "（待确认）" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <NavigationPanel
           status={navigation.status}
           error={navigation.error}
           busy={navigation.busy}
-          canExecute={!!b && !!result?.plan && result.plan.length * scale > 0}
+          canExecute={
+            enabledGoal &&
+            !!b &&
+            !!result?.plan &&
+            result.plan.length * scale > 0
+          }
           onExecute={() => b && void navigation.execute(b, blocked)}
           onCancel={() => void navigation.cancel()}
         />
@@ -462,22 +582,24 @@ export function ABWorkspace() {
         )}
       </section>
       <aside className="right-panel panel">
-        <ObstaclePanel
-          enabled={online}
-          obstacles={obstacles}
-          start={obstacleStart}
-          end={obstacleEnd}
-          selection={obstacleSelection}
-          select={(value) => {
-            setObstacleSelection(value);
-            setBlockMode(false);
-          }}
-          clear={() => {
-            setObstacleSelection(null);
-            setObstacleStart(null);
-            setObstacleEnd(null);
-          }}
-        />
+        {!hardware && (
+          <ObstaclePanel
+            enabled={online}
+            obstacles={obstacles}
+            start={obstacleStart}
+            end={obstacleEnd}
+            selection={obstacleSelection}
+            select={(value) => {
+              setObstacleSelection(value);
+              setBlockMode(false);
+            }}
+            clear={() => {
+              setObstacleSelection(null);
+              setObstacleStart(null);
+              setObstacleEnd(null);
+            }}
+          />
+        )}
         <h3>路线与导出</h3>
         <p>绿色及圆点：道路参考路线与途经点 · 蓝色虚线：Nav2 当前执行路径</p>
         {waypoints.length > 0 && (

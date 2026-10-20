@@ -19,4 +19,6 @@
 
 /artifacts/runs/
 /artifacts/history/
+/artifacts/lynx/
+/integrations/robonix_outdoor/rbnx-build/
 **/*.tsbuildinfo

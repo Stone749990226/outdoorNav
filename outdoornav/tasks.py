@@ -4,6 +4,8 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 import threading
 import uuid
+import json
+from pathlib import Path
 
 TERMINAL = frozenset({"succeeded", "failed", "canceled"})
 STATES = (
@@ -33,11 +35,35 @@ class Task:
 
 
 class TaskStore:
-    def __init__(self, scene_version=None, route_version=None):
+    def __init__(self, scene_version=None, route_version=None, journal=None):
         self.scene_version, self.route_version = scene_version, route_version
         self.lock = threading.RLock()
         self.tasks = {}
         self.current_id = None
+        self.journal = Path(journal) if journal else None
+        if self.journal and self.journal.exists():
+            saved = json.loads(self.journal.read_text())
+            self.tasks = {t["task_id"]: Task(**t) for t in saved["tasks"]}
+            self.current_id = saved["current_id"]
+            for task in self.tasks.values():
+                if task.state not in TERMINAL:
+                    task.state = "failed"
+                    task.reason = "Service restarted; motion was not resumed"
+            self._persist()
+
+    def _persist(self):
+        if self.journal:
+            self.journal.parent.mkdir(parents=True, exist_ok=True)
+            temporary = self.journal.with_suffix(".tmp")
+            temporary.write_text(
+                json.dumps(
+                    {
+                        "current_id": self.current_id,
+                        "tasks": [vars(t) for t in self.tasks.values()],
+                    }
+                )
+            )
+            temporary.replace(self.journal)
 
     def submit(self, goal, blocked=(), task_id=None):
         with self.lock:
@@ -61,6 +87,7 @@ class TaskStore:
                     break
                 if key != self.current_id and self.tasks[key].state in TERMINAL:
                     del self.tasks[key]
+            self._persist()
             return self.snapshot(task.task_id)
 
     def snapshot(self, task_id=None, *, include_paths=True):
@@ -96,6 +123,8 @@ class TaskStore:
                 raise ValueError("Unknown task state")
             for key, value in values.items():
                 setattr(task, key, deepcopy(value))
+            if "state" in values:
+                self._persist()
             return True
 
     def cancel(self, task_id):
@@ -104,6 +133,7 @@ class TaskStore:
             if task.state not in TERMINAL:
                 task.cancel_requested = True
                 task.state = "canceling"
+            self._persist()
             return self.snapshot(task_id)
 
 

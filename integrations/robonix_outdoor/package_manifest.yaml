@@ -1,0 +1,15 @@
+manifestVersion: 1
+package:
+  name: com.outdoornav.service.outdoor
+  version: 0.1.0
+  description: Surveyed outdoor places, road routing and Lynx navigation.
+  license: MIT
+capability_id: outdoor_navigation
+build: bash scripts/build.sh
+start: bash scripts/start.sh
+capabilities:
+  - name: robonix/service/outdoor/places
+  - name: robonix/service/outdoor/preview
+  - name: robonix/service/outdoor/navigate
+  - name: robonix/service/outdoor/navigate/status
+  - name: robonix/service/outdoor/navigate/cancel

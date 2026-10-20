@@ -1,12 +1,17 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
-export default defineConfig({
+import { loadEnv } from "vite";
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   server: {
     fs: {
       allow: [decodeURIComponent(new URL("..", import.meta.url).pathname)],
     },
-    proxy: { "/api": "http://127.0.0.1:8765" },
+    proxy: {
+      "/api":
+        loadEnv(mode, ".", "OUTDOORNAV_").OUTDOORNAV_API_URL ||
+        "http://127.0.0.1:8765",
+    },
   },
   test: { include: ["src/**/*.test.ts"] },
-});
+}));

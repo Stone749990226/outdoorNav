@@ -22,6 +22,14 @@ export type NavigationTask = {
   reason: string | null;
 };
 export type NavigationStatus = {
+  mode?: "lynx" | "simulation";
+  gnss?: {
+    fixed: boolean;
+    hacc_m: number;
+    satellites: number;
+    correction_age_s: number | null;
+  } | null;
+  pose_source?: string;
   schema_version: number;
   ready: boolean;
   run_id: string;
@@ -69,6 +77,21 @@ async function request<T>(
   if (!response.ok) throw new Error(result.error ?? `HTTP ${response.status}`);
   return result as T;
 }
+export type SemanticPlace = Point & {
+  id: string;
+  name: string;
+  aliases: string[];
+  yaw: number;
+  enabled: boolean;
+  note: string;
+};
+export const getPlaces = (signal?: AbortSignal) =>
+  request<{ route_version: string; places: SemanticPlace[] }>(
+    "/api/places",
+    "GET",
+    undefined,
+    signal,
+  );
 const payload = (goal: Point, blocked: string[]) => ({
   frame_id: "map",
   scene_version: bundle.scene_version,

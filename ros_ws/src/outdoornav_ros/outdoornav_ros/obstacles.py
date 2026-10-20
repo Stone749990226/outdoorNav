@@ -5,8 +5,6 @@ import math
 from pathlib import Path
 import threading
 
-from ros_gz_interfaces.srv import DeleteEntity, SetEntityPose, SpawnEntity
-
 from outdoornav.api import ApiError
 from outdoornav.bundle import is_free, world_cell
 from outdoornav.obstacles import box_sdf, obstacle_spec, position_at
@@ -14,6 +12,7 @@ from outdoornav.obstacles import box_sdf, obstacle_spec, position_at
 
 class Obstacles:
     def __init__(self, node, run_dir):
+        from ros_gz_interfaces.srv import DeleteEntity, SetEntityPose, SpawnEntity
         self.node = node
         self.lock = threading.RLock()
         self.items, self.pending, self.deleting = {}, set(), set()
@@ -117,6 +116,7 @@ class Obstacles:
                 raise ApiError(409, "At most five obstacles may be active")
             self.pending.add(spec["name"])
         try:
+            from ros_gz_interfaces.srv import SpawnEntity
             request = SpawnEntity.Request()
             request.entity_factory.name = spec["name"]
             request.entity_factory.sdf = box_sdf(spec)
@@ -143,6 +143,7 @@ class Obstacles:
             self.deleting.add(name)
             item = self.items[name]
         try:
+            from ros_gz_interfaces.srv import DeleteEntity
             request = DeleteEntity.Request()
             request.entity.name, request.entity.type = name, 2
             self.call(self.remove, request)
@@ -166,6 +167,7 @@ class Obstacles:
                     continue
                 self.pending.add(name)
                 point = position_at(item, self.now() - item["started_sim_s"])
+                from ros_gz_interfaces.srv import SetEntityPose
                 request = SetEntityPose.Request()
                 request.entity.name, request.entity.type = name, 2
                 request.pose.position.x, request.pose.position.y = (

@@ -1,0 +1,7 @@
+string place_id
+string[] blocked_road_ids
+string request_id
+---
+bool accepted
+string run_id
+string detail
