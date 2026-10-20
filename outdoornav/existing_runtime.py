@@ -37,14 +37,15 @@ def main():
     from rclpy.executors import SingleThreadedExecutor
     from .existing_ros import ExistingObservations
     rclpy.init(args=None)
-    probe_id = None
+    # Atlas only brokers connections for registered consumers; register this
+    # process identity for its lifetime and never reuse the packaged service ID.
+    import uuid
+    from robonix_api import ATLAS
+    probe_id = 'outdoor_runtime_' + uuid.uuid4().hex[:8]
     if args.observe_only:
-        import uuid
-        from robonix_api import ATLAS
-        probe_id = 'outdoor_observer_' + uuid.uuid4().hex
         config['motion_enabled'] = False
-        config['consumer_id'] = probe_id
-        ATLAS.register_service(probe_id, 'robonix/service/outdoor_observer')
+    config['consumer_id'] = probe_id
+    ATLAS.register_service(probe_id, 'robonix/service/outdoor_runtime')
     client = NavigationClient(config['navigation_provider_id'], config.get('consumer_id', 'outdoor_navigation'))
     backend = ExistingNavigation(load_bundle(), args.places, config, client,
                                  Path(args.run_dir) / 'tasks.json')

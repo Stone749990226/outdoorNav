@@ -18,6 +18,7 @@ def main():
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     destination = ("127.0.0.1", int(os.environ.get("LYNX_GNSS_PORT", "18765")))
+    odom_destination = ("127.0.0.1", int(os.environ.get("LYNX_GNSS_ODOM_PORT", "18766")))
     original_init = GNSSStreamer.__init__
 
     def init(self, *args, **kwargs):
@@ -26,7 +27,9 @@ def main():
         def receive(raw, formatted, queue, **extra):
             # One callback, one serial reader. The ROS process never opens the port.
             if raw.startswith((b"$", b"\xb5\x62")):
-                sock.sendto(struct.pack("!d", time.monotonic()) + raw, destination)
+                stamped = struct.pack("!d", time.monotonic()) + raw
+                sock.sendto(stamped, destination)
+                sock.sendto(stamped, odom_destination)
             return output(raw, formatted, queue, **extra)
 
         kwargs["outputhandler"] = receive

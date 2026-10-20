@@ -18,11 +18,18 @@ class ExistingNavigation:
         self.places = Places(places, bundle)
         self.tasks = TaskStore(bundle['scene_version'], bundle['route_version'], journal)
         self.alignment = MapAlignment(bundle['origin_wgs84'], config['antenna_xy_m'])
+        # Outdoor mode maps GNSS ENU straight onto the scene map: the odometry
+        # node already publishes map/odom in that frame, so no baseline fit is
+        # needed and a float solution is usable for a demo-level run.
+        if config.get('frame_alignment') == 'enu_identity':
+            self.alignment.transform = (0.0, 0.0, 0.0)
         self.lock = threading.RLock()
         self.obstacles = None
         self.service_active = False
         self.map_pose = None
         self.map_pose_at = self.odom_at = self.scan_at = -math.inf
+        self.last_fix = None
+        self.last_fix_at = -math.inf
         self.stopped_since = None
         self.navigation = {'active': False, 'registration_id': None}
         self.worker_task = None
@@ -54,8 +61,26 @@ class ExistingNavigation:
 
     def on_fix(self, fix, received):
         with self.lock:
-            if 0 <= self.clock() - received < 1:
+            if not 0 <= self.clock() - received < 1:
+                return
+            self.last_fix = fix
+            self.last_fix_at = received
+            if self.alignment.transform is None:
                 self.alignment.update(fix, self.map_pose, received)
+
+    def location_ready(self, now):
+        if self.alignment.fault:
+            return False
+        if self.config.get('frame_alignment') == 'enu_identity':
+            fix = self.last_fix
+            if not fix or now - self.last_fix_at > self.config.get('gnss_max_age_s', 10):
+                return False
+            if not fix.get('differential'):
+                return False
+            hacc = fix.get('hacc_m')
+            return bool(hacc is not None and math.isfinite(hacc)
+                        and hacc <= self.config.get('gnss_max_hacc_m', 2.0))
+        return self.alignment.ready(now)
 
     def stopped(self, now):
         return (self.stopped_since is not None and now - self.stopped_since >= 1
@@ -65,7 +90,7 @@ class ExistingNavigation:
         with self.lock:
             now = self.clock()
             health = {
-                'localization': self.alignment.ready(now),
+                'localization': self.location_ready(now),
                 'calibration': self.alignment.transform is not None and not self.alignment.fault,
                 'antenna_extrinsics': self.config.get('antenna_offset_confirmed') is True,
                 'tf': now - self.map_pose_at < 1,
@@ -84,7 +109,7 @@ class ExistingNavigation:
                     'ready': all(health.values()), 'health': health,
                     'localization': self.fault or self.alignment.fault or ('ok' if all(health.values()) else 'not_ready'),
                     'pose': pose, 'pose_source': 'existing_map_georeferenced',
-                    'gnss': self.alignment.fix, 'task': self.tasks.snapshot(),
+                    'gnss': self.last_fix or self.alignment.fix, 'task': self.tasks.snapshot(),
                     'alignment': {'samples': len(self.alignment.samples), 'residual_m': self.alignment.residual_m,
                                   'minimum_baseline_m': self.alignment.min_baseline,
                                   'valid': health['calibration']},

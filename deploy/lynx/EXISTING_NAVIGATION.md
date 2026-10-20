@@ -47,3 +47,36 @@
 ## 旧的替换式配置
 
 `deploy/lynx/start.sh`、`lynx.launch.py`、`lynx_watchdog.py` 属于先前交接的独立 Nav2 方案，保留作参考与仿真，不再作为山猫接入路径，也不应由 Robonix 包启动。
+
+## RTK-only odometry (2026-10-20)
+
+Indoor SLAM odometry cannot register in open outdoor space: the front Airy is a
+vertical fan, so ICP sees sparse far returns and reports `ratio=0`. The robot
+consequently has no `map->odom`. The outdoor path therefore uses RTK position
+plus IMU yaw rate instead of SLAM:
+
+- `deploy/lynx/gnss_odom.py` publishes `/outdoor/odom` and the TF
+  `map->odom` (identity; the scene bundle's ENU frame *is* the map) and
+  `odom->base_link` from the GNSS fix and the integrated IMU yaw rate.
+- `deploy/lynx/gnss_stream.py` now tees each receiver message to two local UDP
+  ports: 18765 for the task runtime, 18766 for the odometry node.
+- `frame_alignment: enu_identity` skips the surveyed-baseline fit; the GNSS
+  position already is the map position.
+- A float solution is accepted (`gnss_max_hacc_m: 2.0`, `gnss_max_age_s: 10`)
+  because a fixed solution is not reliably available; the fixed-only gate stays
+  available by removing `frame_alignment`.
+
+Heading still needs one initial value. It is taken from the GNSS course over
+ground once the robot has moved 1 m over 2 s; a wrong initial heading rotates
+every goal, so verify it after the first move.
+
+Robot-side changes made on 山猫 (not in this repository):
+
+- `robonix_manifest.yaml`: `lynx_quadruped.odom_source_topic` ->
+  `/outdoor/odom`; `deskew_lidar: false`. Backup:
+  `robonix_manifest.yaml.bak-20261020-1700`.
+- `config/nav2_params_lite3.yml`: global costmap is rolling 24x24 m, the static
+  layer is removed, `allow_unknown: true`, obstacle ranges 6 m / raytrace 8 m,
+  `xy_goal_tolerance: 0.50`. Backup: `nav2_params_lite3.yml.bak-20261020-1700`.
+- `/home/nvidia/ntrip/ntrip.conf`: `rtkggaint=1` (was 5). Backup:
+  `ntrip.conf.bak-20261020`.
