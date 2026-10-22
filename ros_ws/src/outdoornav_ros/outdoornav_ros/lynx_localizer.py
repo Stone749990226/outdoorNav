@@ -5,16 +5,20 @@ import math
 import socket
 import struct
 import time
+from collections import deque
 from pathlib import Path
 
 import rclpy
 from geometry_msgs.msg import TransformStamped
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
-from sensor_msgs.msg import NavSatFix, NavSatStatus
+from rclpy.qos import qos_profile_sensor_data, QoSProfile, DurabilityPolicy
+from sensor_msgs.msg import NavSatFix, NavSatStatus, PointCloud2
 from std_msgs.msg import String
 from tf2_ros import TransformBroadcaster
+from tf2_msgs.msg import TFMessage
+from outdoornav.config import load_robot_config
+from outdoornav.diagnostics import StaticFrames, json_safe
 
 from outdoornav.bundle import load_bundle
 from outdoornav.coordinates import enu
@@ -22,17 +26,23 @@ from outdoornav.gnss import FixDecoder
 from outdoornav.localization import GeoAlignment
 
 
+def transform_key(transform):
+    p, q, stamp = transform.transform.translation, transform.transform.rotation, transform.header.stamp
+    return (transform.header.frame_id, transform.child_frame_id, stamp.sec, stamp.nanosec,
+            p.x, p.y, p.z, q.x, q.y, q.z, q.w)
+
+
 class LynxLocalizer(Node):
     def __init__(self):
         super().__init__("lynx_geo_localization")
         for key in ("bundle", "robot_config"):
             self.declare_parameter(key, "")
-        self.config = json.loads(
-            Path(self.get_parameter("robot_config").value).read_text()
-        )
+        self.config = load_robot_config(self.get_parameter("robot_config").value)
         bundle = load_bundle(self.get_parameter("bundle").value)
         self.alignment = GeoAlignment(bundle["origin_wgs84"], self.config)
-        self.decoder = FixDecoder()
+        self.decoder = FixDecoder(self.config)
+        self.rx_packets, self.rx_bytes, self.rx_pvt = 0, 0, 0
+        self.rx_at = -math.inf
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(("127.0.0.1", self.config["gnss_udp_port"]))
         self.socket.setblocking(False)
@@ -40,11 +50,43 @@ class LynxLocalizer(Node):
         self.odom_pub = self.create_publisher(Odometry, "/outdoor/odom", 10)
         self.fix_pub = self.create_publisher(NavSatFix, "/outdoor/gnss/fix", 10)
         self.status_pub = self.create_publisher(String, "/outdoor/localization", 10)
-        self.create_subscription(
-            Odometry, self.config["odom_topic"], self.odom, qos_profile_sensor_data
-        )
+        self.lio_status, self.lio_at = {}, -math.inf
+        if self.config.get('lio', {}).get('enabled'):
+            self.create_subscription(String, '/outdoor/lio/status', self.on_lio, 10)
+        if self.config['odom_topic']:
+            self.create_subscription(Odometry, self.config['odom_topic'], self.odom, qos_profile_sensor_data)
+        self.static_frames = StaticFrames()
+        self.cloud_frame = None
+        static_qos = QoSProfile(depth=100, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self.create_subscription(TFMessage, '/tf_static', self.static_frames.receive, static_qos)
+        self.create_subscription(PointCloud2, self.config['cloud_topic'], self.on_cloud, qos_profile_sensor_data)
+        self.ownership_conflict = False
+        self.sent_transforms = deque(maxlen=200)
+        self.dynamic_tf_sub = self.create_subscription(TFMessage, '/tf', self.on_tf, 100)
+        self.create_timer(1.0, self.check_tf_owners)
         self.create_timer(0.02, self.receive)
         self.create_timer(0.1, self.status)
+
+    def on_cloud(self, msg):
+        self.cloud_frame = msg.header.frame_id
+
+    def on_lio(self, msg):
+        try:
+            value = json.loads(msg.data)
+            if not isinstance(value, dict):
+                raise ValueError('LIO status must be an object')
+            self.lio_status, self.lio_at = value, time.monotonic()
+        except (ValueError, TypeError):
+            self.lio_status = {}
+
+    def lio_ready(self, now):
+        return (not self.config.get('lio', {}).get('enabled') or
+                (self.lio_status.get('ready') is True and
+                 now-self.lio_at < self.config['lio']['input_timeout_s']))
+
+    def extrinsics(self):
+        return {'ready': self.static_frames.matrix(self.cloud_frame) is not None,
+                'cloud_frame': self.cloud_frame, 'faults': sorted(self.static_frames.faults)}
 
     def odom(self, msg):
         p, q = msg.pose.pose.position, msg.pose.pose.orientation
@@ -54,7 +96,7 @@ class LynxLocalizer(Node):
         if (
             not all(math.isfinite(v) for v in (norm, p.x, p.y, p.z))
             or abs(norm - 1) > 0.05
-            or not -0.1 <= age < 1
+            or not -0.1 <= age < self.config["sensor_timeout_s"]
         ):
             self.alignment.fault = "odometry_stamp_or_quaternion_invalid"
             return
@@ -72,6 +114,9 @@ class LynxLocalizer(Node):
             msg.twist.twist.linear.x = math.cos(yaw) * vx + math.sin(yaw) * vy
             msg.twist.twist.linear.y = -math.sin(yaw) * vx + math.cos(yaw) * vy
             msg.twist.twist.angular.z = wrap(yaw - previous[2]) / dt
+        else:
+            # One pose cannot establish a measured velocity or standstill.
+            return
         # Preserve the source clock; no restamping of stale samples.
         msg.header.frame_id, msg.child_frame_id = "odom", "base_link"
         self.odom_pub.publish(msg)
@@ -84,16 +129,32 @@ class LynxLocalizer(Node):
             tf.transform.translation.z,
         ) = p.x, p.y, p.z
         tf.transform.rotation = q
-        self.tf.sendTransform(tf)
+        self.send_tf(tf)
         a = self.alignment
-        if a.ready(time.monotonic()):
+        if a.ready(time.monotonic()) and self.lio_ready(time.monotonic()) and not self.ownership_conflict:
             tf = TransformStamped()
             tf.header.stamp = msg.header.stamp
             tf.header.frame_id, tf.child_frame_id = "map", "odom"
             tf.transform.translation.x, tf.transform.translation.y = a.translation
             tf.transform.rotation.z = math.sin(a.rotation / 2)
             tf.transform.rotation.w = math.cos(a.rotation / 2)
-            self.tf.sendTransform(tf)
+            self.send_tf(tf)
+
+    def send_tf(self, transform):
+        # Humble callbacks do not expose publisher IDs. Remember our exact
+        # messages so a competing publisher of these frames cannot be hidden.
+        self.sent_transforms.append(transform_key(transform))
+        self.tf.sendTransform(transform)
+
+    def check_tf_owners(self):
+        if self.count_publishers(self.dynamic_tf_sub.topic_name) > 1:
+            self.ownership_conflict = True
+
+    def on_tf(self, msg):
+        for transform in msg.transforms:
+            if transform.child_frame_id in ('odom', 'base_link') and transform_key(transform) not in self.sent_transforms:
+                self.ownership_conflict = True
+                self.alignment.fault = 'conflicting_tf_owner; stop other localization and restart'
 
     def receive(self):
         for _ in range(100):
@@ -104,11 +165,15 @@ class LynxLocalizer(Node):
             if len(raw) < 8:
                 continue
             received = struct.unpack("!d", raw[:8])[0]
-            if not 0 <= time.monotonic() - received < 1:
+            if not 0 <= time.monotonic() - received < self.config["sensor_timeout_s"]:
                 continue
+            self.rx_packets += 1
+            self.rx_bytes += len(raw) - 8
+            self.rx_at = received
             fix = self.decoder.feed(raw[8:], received)
             if fix is None:
                 continue
+            self.rx_pvt += 1
             self.alignment.update_fix(fix, received)
             msg = NavSatFix()
             msg.header.stamp = self.get_clock().now().to_msg()
@@ -144,14 +209,22 @@ class LynxLocalizer(Node):
             pose = {"x": x, "y": y, "yaw": self.config["initial_heading_rad"]}
         age = now - a.fix_at
         payload = {
-            "ready": a.ready(now),
-            "fault": a.fault,
+            "ready": a.ready(now) and self.lio_ready(now) and not self.ownership_conflict,
+            "lio": ({**self.lio_status, 'ready': self.lio_ready(now)}
+                    if self.config.get('lio', {}).get('enabled') else None),
+            "grade": a.grade,
+            "ownership_conflict": self.ownership_conflict or bool(self.static_frames.faults),
+            "extrinsics": self.extrinsics(),
+            "tf_conflicts": {"dynamic": self.ownership_conflict, "static": sorted(self.static_frames.faults)},
+            "fault": a.fault or (None if self.config["odom_topic"] else "odometry_source_unconfigured"),
+            "receiver": {"packets": self.rx_packets, "bytes": self.rx_bytes,
+                         "pvt_messages": self.rx_pvt, "last_packet_age_s": now - self.rx_at},
             "fix": a.fix,
             "fix_age_s": age if math.isfinite(age) else None,
             "pose": pose,
             "pose_source": "aligned_odom" if a.pose() else "gnss_antenna",
         }
-        self.status_pub.publish(String(data=json.dumps(payload, allow_nan=False)))
+        self.status_pub.publish(String(data=json.dumps(json_safe(payload), allow_nan=False)))
 
     def destroy_node(self):
         self.socket.close()
@@ -163,6 +236,9 @@ def main():
     node = LynxLocalizer()
     try:
         rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()

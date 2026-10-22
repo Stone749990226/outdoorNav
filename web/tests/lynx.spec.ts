@@ -26,6 +26,14 @@ test("Lynx position remains visible before readiness; confirmed place uses share
         scene_version: bundle.scene_version,
         route_version: bundle.route_version,
         ready,
+        diagnostic: !ready,
+        not_ready_reasons: ready
+          ? []
+          : [
+              { code: "localization", message: "无合格且稳定的 RTK 定位" },
+              { code: "lidar", message: "雷达无有效新数据" },
+              { code: "motion_enabled", message: "运动开关关闭" },
+            ],
         pose,
         task,
         localization: ready ? "ok" : "waiting_for_rtk",
@@ -68,6 +76,16 @@ test("Lynx position remains visible before readiness; confirmed place uses share
   });
   await page.goto("/");
   await expect(page.getByTestId("navigation-robot")).toBeVisible();
+  await expect(page.getByTestId("diagnostic-mode")).toContainText(
+    "底盘输出已隔离",
+  );
+  await expect(page.getByTestId("readiness-reasons")).toContainText("RTK");
+  await expect(page.getByTestId("readiness-reasons")).toContainText(
+    "雷达无有效新数据",
+  );
+  await expect(page.getByTestId("readiness-reasons")).toContainText(
+    "运动开关关闭",
+  );
   await expect(
     page.getByRole("button", { name: "执行导航", exact: true }),
   ).toBeDisabled();
@@ -87,17 +105,30 @@ test("Lynx position remains visible before readiness; confirmed place uses share
   );
 });
 
-test("hardware free goal does not snap to roads or require a surveyed place", async ({
+test("hardware snaps nearby goals, rejects off-road clicks and previews a road route", async ({
   page,
 }) => {
-  const { choose } = await import("./mapHelpers");
-  const { campus, toMap } = await import("../src/map");
+  const { choose, interpolate } = await import("./mapHelpers");
+  const { campus, toMap, scale } = await import("../src/map");
   const { snap } = await import("../src/planner");
-  const target = { x: campus.width / 2, y: campus.height / 2 };
-  expect(snap(target)!.distance).toBeGreaterThan(12);
+  const far = { x: campus.width / 2, y: campus.height / 2 };
+  expect(snap(far)!.distance * scale).toBeGreaterThan(2);
+  const road = campus.roads[0].points;
+  const target = interpolate(road[0], road[1], 0.5);
+  const near = { x: target.x, y: target.y + 0.5 / scale };
   let submitted: any = null;
+  await page.addInitScript(() =>
+    Object.defineProperty(crypto, "randomUUID", { value: undefined }),
+  );
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
+    const pose = {
+      ...placeData.places[0],
+      frame_id: "map",
+      yaw: 0,
+      age_s: 0,
+      stamp_s: 1,
+    };
     if (path === "/api/status")
       return route.fulfill({
         json: {
@@ -108,17 +139,29 @@ test("hardware free goal does not snap to roads or require a surveyed place", as
           ready: true,
           health: {},
           localization: "ok",
+          pose,
           task: null,
-          pose: {
-            ...placeData.places[0],
-            frame_id: "map",
-            yaw: 0,
-            age_s: 0,
-            stamp_s: 1,
+          gnss: {
+            fixed: false,
+            float: true,
+            hacc_m: 0.7,
+            satellites: 20,
+            correction_age_s: 1,
           },
         },
       });
     if (path === "/api/places") return route.fulfill({ json: placeData });
+    if (path === "/api/plans")
+      return route.fulfill({
+        json: {
+          reference_path: [pose, toMap(target)],
+          start: pose,
+          goal: toMap(target),
+          segment_roads: ["loop-a"],
+          road_ids: ["loop-a"],
+          length_m: 10,
+        },
+      });
     if (path === "/api/tasks") {
       submitted = route.request().postDataJSON();
       return route.fulfill({
@@ -139,18 +182,20 @@ test("hardware free goal does not snap to roads or require a surveyed place", as
   });
   await page.goto("/");
   await expect(page.getByTestId("navigation-robot")).toBeVisible();
-  await choose(page, target);
+  await choose(page, far);
   await expect(page.getByTestId("ab-message")).toContainText(
-    "不要求在预设道路上",
+    "不在开放路线附近",
   );
   await expect(
     page.getByRole("button", { name: "封闭或恢复道路", exact: true }),
-  ).toHaveCount(0);
+  ).toBeVisible();
+  await choose(page, near);
+  await page.getByTestId("plan-ab").click();
+  await expect(page.getByTestId("ab-message")).toContainText("路线已生成");
+  await expect(page.getByText("RTK 浮点解", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "执行导航", exact: true }).click();
   await expect.poll(() => submitted).not.toBeNull();
-  // Mouse coordinates quantize at screen pixels; the point stays far off-road.
-  expect(submitted.goal.x).toBeCloseTo(toMap(target).x, 0);
-  expect(submitted.goal.y).toBeCloseTo(toMap(target).y, 0);
-  expect(submitted.blocked_road_ids).toEqual([]);
+  expect(submitted.goal.x).toBeCloseTo(toMap(snap(near)!.point).x, 0);
+  expect(submitted.goal.y).toBeCloseTo(toMap(snap(near)!.point).y, 0);
   expect(submitted.request_id).toMatch(/^[a-f0-9]{32}$/);
 });

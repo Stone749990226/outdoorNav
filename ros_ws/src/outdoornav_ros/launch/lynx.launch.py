@@ -1,6 +1,8 @@
 """Outdoor-only Nav2 profile; no BT navigator, SLAM or Gazebo dependencies."""
 
 import json
+from outdoornav.config import load_robot_config
+from outdoornav.lio import fastlio_parameters, checked_matrix, quaternion
 import math
 from pathlib import Path
 
@@ -12,17 +14,22 @@ from launch.actions import (
     OpaqueFunction,
     RegisterEventHandler,
     EmitEvent,
+    GroupAction,
 )
 from launch.event_handlers import OnProcessExit
 from launch.events import Shutdown
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
+from launch_ros.actions import Node, SetRemap
 
 
 def nodes(context):
     value = lambda name: LaunchConfiguration(name).perform(context)
+    diagnostic = value("diagnostic").lower()
+    if diagnostic not in ('true', 'false'):
+        raise ValueError('diagnostic must be true or false')
+    diagnostic = diagnostic == 'true'
     bundle = json.loads(Path(value("bundle")).read_text())
-    robot = json.loads(Path(value("robot_config")).read_text())
+    robot = load_robot_config(value("robot_config"))
     if (
         not 0 < robot["max_speed_mps"] <= 0.15
         or not 0.1 <= robot["footprint_radius_m"] <= 2
@@ -69,13 +76,7 @@ def nodes(context):
                 "inflation_radius": robot["footprint_radius_m"] + 0.2,
                 "cost_scaling_factor": 3.0,
             },
-            "filters": ["road_boundary"],
-            "road_boundary": {
-                "plugin": "nav2_costmap_2d::KeepoutFilter",
-                "enabled": True,
-                "filter_info_topic": "/outdoor/corridor_info",
-                "transform_tolerance": 0.2,
-            },
+
         }
         if not rolling:
             costmap.update(
@@ -88,16 +89,58 @@ def nodes(context):
     params["velocity_smoother"]["ros__parameters"]["max_velocity"][0] = robot[
         "max_speed_mps"
     ]
+    params['controller_server']['ros__parameters']['FollowPath']['max_vel_theta'] = robot['max_angular_speed_rps']
+    params['velocity_smoother']['ros__parameters']['max_velocity'][2] = robot['max_angular_speed_rps']
+    params['velocity_smoother']['ros__parameters']['min_velocity'][2] = -robot['max_angular_speed_rps']
     output = Path(value("run_dir"))
     output.mkdir(parents=True, exist_ok=True)
     effective = output / "lynx_nav2.yaml"
-    effective.write_text(yaml.safe_dump(params))
     shared = {
         "bundle": value("bundle"),
         "robot_config": value("robot_config"),
         "use_sim_time": False,
+        "diagnostic": diagnostic,
     }
-    return [
+    params['velocity_smoother']['ros__parameters']['velocity_timeout'] = robot['command_timeout_s']
+    effective.write_text(yaml.safe_dump(params))
+    lio_nodes = []
+    if robot.get('lio', {}).get('enabled'):
+        # FAST-LIO owns a private IMU-frame TF tree. Only the localizer owns outdoor TF.
+        get_package_share_directory('fast_lio')
+        lio_nodes = [
+            Node(package='outdoornav_ros', executable='lynx_lio', parameters=[shared], output='screen'),
+            Node(package='fast_lio', executable='fastlio_mapping', name='outdoor_fastlio',
+                 parameters=[fastlio_parameters(robot)], output='screen',
+                 remappings=[('/tf', '/outdoor/lio/tf'), ('/Odometry', '/outdoor/lio/raw_odom'),
+                             ('/path', '/outdoor/lio/path'), ('/cloud_registered', '/outdoor/lio/registered'),
+                             ('/cloud_registered_body', '/outdoor/lio/registered_body'),
+                             ('/cloud_effected', '/outdoor/lio/effected'), ('/Laser_map', '/outdoor/lio/map')]),
+        ]
+        lio = robot['lio']
+        if lio['start_driver']:
+            get_package_share_directory('rslidar_sdk')
+            path = Path(lio['driver_config'])
+            if not path.is_absolute():
+                path = Path(value('robot_config')).resolve().parent / path
+            driver = yaml.safe_load(path.read_text())
+            sensor = driver['lidar'][0]['ros']
+            if (sensor['ros_send_point_cloud_topic'] != robot['cloud_topic'] or
+                    sensor['ros_send_imu_data_topic'] != lio['imu_topic'] or
+                    sensor['ros_frame_id'] != lio['lidar_frame']):
+                raise ValueError('LIO driver topics/frame differ from robot configuration')
+            lio_nodes.insert(0, Node(package='rslidar_sdk', executable='rslidar_sdk_node',
+                                     name='outdoor_lidar_driver', parameters=[{'config_path': str(path)}], output='screen'))
+        for child, key in ((lio['lidar_frame'], 'base_from_lidar'), (lio['imu_frame'], 'base_from_imu')):
+            if child == 'base_link':
+                continue
+            matrix = checked_matrix(lio[key])
+            xyz, xyzw = matrix[:3, 3].tolist(), quaternion(matrix[:3, :3]).tolist()
+            arguments = [arg for name, number in zip(('x', 'y', 'z', 'qx', 'qy', 'qz', 'qw'), [*xyz, *xyzw])
+                         for arg in ('--'+name, str(number))]
+            lio_nodes.append(Node(package='tf2_ros', executable='static_transform_publisher',
+                                  arguments=[*arguments, '--frame-id', 'base_link', '--child-frame-id', child]))
+    return [GroupAction(actions=[
+        SetRemap(src='/tf', dst='/outdoor/tf'),
         RegisterEventHandler(
             OnProcessExit(
                 on_exit=[EmitEvent(event=Shutdown(reason="An outdoor process exited"))]
@@ -115,7 +158,8 @@ def nodes(context):
             parameters=[shared, {"places": value("places"), "run_dir": str(output)}],
             output="screen",
         ),
-        Node(package="outdoornav_ros", executable="lynx_watchdog", output="screen"),
+        Node(package="outdoornav_ros", executable="lynx_watchdog",
+             parameters=[shared], output="screen"),
         Node(
             package="pointcloud_to_laserscan",
             executable="pointcloud_to_laserscan_node",
@@ -172,7 +216,7 @@ def nodes(context):
                 }
             ],
         ),
-    ]
+    ]), GroupAction(actions=lio_nodes)]
 
 
 def generate_launch_description():
@@ -182,6 +226,7 @@ def generate_launch_description():
                 DeclareLaunchArgument(name)
                 for name in ("bundle", "robot_config", "places", "run_dir")
             ),
+            DeclareLaunchArgument("diagnostic", default_value="false"),
             OpaqueFunction(function=nodes),
         ]
     )

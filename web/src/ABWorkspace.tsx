@@ -87,6 +87,7 @@ export function ABWorkspace() {
   }, [hardware, navigation.status?.route_version]);
   const [a, setA] = useState<Point | null>(null),
     [b, setB] = useState<Point | null>(null);
+  const [placeId, setPlaceId] = useState<string | undefined>();
   const [selection, setSelection] = useState<"a" | "b">("a");
   const [blocked, setBlocked] = useState<string[]>([]);
   const [blockMode, setBlockMode] = useState(false),
@@ -149,18 +150,12 @@ export function ABWorkspace() {
       setMessage("障碍物位置已选择，可在右侧添加到 Gazebo");
       return;
     }
-    if (hardware) {
-      invalidate();
-      setB(point);
-      setMessage("目标已选择；由山猫现有导航规划，不要求在预设道路上");
-      return;
-    }
     if (blockMode) return;
     const projected = snap(point),
       open = projected && snap(projected.point, blocked);
     if (
       !projected ||
-      projected.distance > tolerance ||
+      projected.distance > (hardware ? 2 / scale : tolerance) ||
       !open ||
       open.distance > 1e-6
     ) {
@@ -168,33 +163,39 @@ export function ABWorkspace() {
       return;
     }
     invalidate();
-    if (!online && selection === "a") {
+    setPlaceId(undefined);
+    if (!hardware && !online && selection === "a") {
       setA(projected.point);
       setSelection("b");
     } else setB(projected.point);
     setMessage("目标已选择，请规划路线");
   };
+  const selectPlace = (place: SemanticPlace) => {
+    invalidate();
+    const point = mapToSvg(place);
+    if (!hardware && !online && selection === "a") {
+      setA(point);
+      setSelection("b");
+      setPlaceId(undefined);
+    } else {
+      setB(point);
+      setPlaceId(place.id);
+    }
+    setMessage(
+      place.enabled || !hardware
+        ? `已选择 ${place.name}`
+        : `${place.name}：待现场确认`,
+    );
+  };
   const compute = async () => {
     if (!b || (!a && !hardware)) return;
-    if (hardware) {
-      setBusy(true);
-      try {
-        await previewRoute(b, []);
-        setMessage("目标格式有效；实际可达性由现有导航在执行时规划检查");
-      } catch (error) {
-        setMessage(error instanceof Error ? error.message : "目标检查失败");
-      } finally {
-        setBusy(false);
-      }
-      return;
-    }
     if (!a) return;
     const token = ++generation.current;
     setBusy(true);
     try {
       const next =
         online || (hardware && pose)
-          ? referenceResult(await previewRoute(b, blocked))
+          ? referenceResult(await previewRoute(b, blocked, placeId))
           : planAB(a, b, blocked);
       if (generation.current !== token) return;
       next.blocked = [...blocked];
@@ -259,18 +260,12 @@ export function ABWorkspace() {
             aria-label={`选择${place.name}`}
             onClick={(event) => {
               event.stopPropagation();
-              invalidate();
-              setB(p);
-              setMessage(
-                place.enabled || !hardware
-                  ? `已选择 ${place.name}`
-                  : `${place.name}：待现场确认`,
-              );
+              selectPlace(place);
             }}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
-                invalidate();
-                setB(p);
+                event.preventDefault();
+                selectPlace(place);
               }
             }}
           >
@@ -438,7 +433,7 @@ export function ABWorkspace() {
         <button
           className="endpoint-card"
           data-testid="select-a"
-          disabled={online}
+          disabled={online || hardware}
           onClick={() => {
             setSelection("a");
             setObstacleSelection(null);
@@ -473,7 +468,7 @@ export function ABWorkspace() {
           onClick={() => void compute()}
         >
           <Route size={16} />
-          {busy ? "处理中…" : hardware ? "检查目标" : "规划 A→B"}
+          {busy ? "规划中…" : "规划 A→B"}
         </button>
         {hardware && (
           <label>
@@ -488,6 +483,7 @@ export function ABWorkspace() {
                 if (place) {
                   invalidate();
                   setB(mapToSvg(place));
+                  setPlaceId(place.id);
                   setMessage(
                     place.enabled || !hardware
                       ? `已选择 ${place.name}`
@@ -512,36 +508,36 @@ export function ABWorkspace() {
           busy={navigation.busy}
           canExecute={
             !!b &&
-            (hardware || (!!result?.plan && result.plan.length * scale > 0))
+            !!result?.plan &&
+            result.plan.length * scale > 0 &&
+            (!placeId ||
+              !hardware ||
+              places.some((p) => p.id === placeId && p.enabled))
           }
-          onExecute={() =>
-            b && void navigation.execute(b, hardware ? [] : blocked)
-          }
+          onExecute={() => b && void navigation.execute(b, blocked, placeId)}
           onCancel={() => void navigation.cancel()}
         />
-        {!hardware && (
+        <button
+          onClick={() => setBlockMode((v) => !v)}
+          className={blockMode ? "active" : ""}
+        >
+          封闭或恢复道路
+        </button>
+        {roads.map((r) => (
           <button
-            onClick={() => setBlockMode((v) => !v)}
-            className={blockMode ? "active" : ""}
+            key={r.id}
+            data-testid={`toggle-${r.id}`}
+            onClick={() => closeRoad(r.id)}
           >
-            封闭或恢复道路
+            {blocked.includes(r.id) ? "恢复" : "封闭"}
+            {r.name}
           </button>
-        )}
-        {!hardware &&
-          roads.map((r) => (
-            <button
-              key={r.id}
-              data-testid={`toggle-${r.id}`}
-              onClick={() => closeRoad(r.id)}
-            >
-              {blocked.includes(r.id) ? "恢复" : "封闭"}
-              {r.name}
-            </button>
-          ))}
+        ))}
         <button
           onClick={() => {
             invalidate();
             setB(null);
+            setPlaceId(undefined);
             if (!online) setA(null);
             setSelection(online ? "b" : "a");
             setBlocked([]);
@@ -604,7 +600,7 @@ export function ABWorkspace() {
           />
         )}
         <h3>路线与导出</h3>
-        <p>绿色及圆点：道路参考路线与途经点 · 蓝色虚线：Nav2 当前执行路径</p>
+        <p>绿色：道路参考路线（尚未确认无障碍）· 蓝色虚线：Nav2 当前执行路径</p>
         {waypoints.length > 0 && (
           <details>
             <summary>规划途经点（{waypoints.length}）</summary>

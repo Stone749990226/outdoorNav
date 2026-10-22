@@ -29,6 +29,7 @@ from outdoornav.api import ApiError, serve
 from outdoornav.bundle import is_free, load_bundle, masks
 from outdoornav.routing import RouteGuidance, plan_route, validate_point
 from outdoornav.tasks import TaskStore, TERMINAL, ProgressBudget
+from outdoornav.outdoor import OutdoorService
 from .maps import LATCHED, Maps
 from .obstacles import Obstacles
 from .motion import MotionPrediction
@@ -123,11 +124,11 @@ class Navigation(Node):
         )
         from rclpy.qos import qos_profile_sensor_data
 
-        for message_type, topic, key in [
+        for message_type, topic, key in ([] if hardware else [
             (Image, "/rtk/camera/depth_image", "depth"),
             (PointCloud2, "/rtk/camera/points", "points"),
             (LaserScan, "/rtk/scan", "lidar"),
-        ]:
+        ]):
             self.create_subscription(
                 message_type,
                 topic,
@@ -150,7 +151,8 @@ class Navigation(Node):
         self.create_subscription(
             OccupancyGrid, "/local_costmap/costmap", self.on_local, LATCHED
         )
-        self.create_subscription(Odometry, "/odometry/local", self.on_odom, 10)
+        if not hardware:
+            self.create_subscription(Odometry, "/odometry/local", self.on_odom, 10)
         self.create_subscription(
             Twist, "/navigation/controller_command", self.on_command, 10
         )
@@ -178,6 +180,7 @@ class Navigation(Node):
         if not hardware:
             self.obstacles = Obstacles(self, self.get_parameter("run_dir").value)
             self.prediction = MotionPrediction(self)
+        self.outdoor = OutdoorService(self.bundle, None, self.tasks, self.status)
         self.http = None if hardware else serve(self)
 
     def mark(self, key):
@@ -215,9 +218,13 @@ class Navigation(Node):
         self.mark("local_map")
 
     def on_odom(self, msg):
+        stamp = msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9
+        age = self.get_clock().now().nanoseconds / 1e9 - stamp
         t = msg.twist.twist
+        if not -0.1 <= age < (self.config["sensor_timeout_s"] if self.hardware else 1) or not all(math.isfinite(v) for v in (t.linear.x, t.linear.y, t.angular.z)):
+            return
         self.velocity = (math.hypot(t.linear.x, t.linear.y), abs(t.angular.z))
-        self.velocity_at = time.monotonic()
+        self.velocity_at = time.monotonic() - max(0, age)
 
     def on_command(self, msg):
         self.raw_command, self.raw_received = msg, time.monotonic()
@@ -319,54 +326,16 @@ class Navigation(Node):
         return self.bundle
 
     def validated(self, payload):
-        if not isinstance(payload, dict):
-            raise ValueError("Request must be a JSON object")
-        if set(payload) - {
-            "frame_id",
-            "scene_version",
-            "route_version",
-            "goal",
-            "blocked_road_ids",
-        }:
-            raise ValueError("Unknown navigation request fields")
-        if payload.get("frame_id") != "map":
-            raise ValueError("Goal frame must be map")
-        for key in ("scene_version", "route_version"):
-            if payload.get(key) != self.bundle[key]:
-                raise ApiError(409, key + " does not match the loaded scene")
-        goal = validate_point(payload.get("goal"))
-        blocked = payload.get("blocked_road_ids", [])
-        if not isinstance(blocked, list) or not all(
-            isinstance(v, str) for v in blocked
-        ):
-            raise ValueError("blocked_road_ids must be a list of road IDs")
-        if not self.status(False)["ready"]:
-            raise ApiError(503, "Localization, sensors or Nav2 are not ready")
-        if not is_free(self.free, self.bundle["grid"], goal):
-            raise ValueError("Destination is not in traversable scene space")
-        route = plan_route(self.bundle["network"], self.pose(), goal, blocked)
-        # Projection is a selection tolerance, not permission to jump to another road.
-        if (
-            math.dist((goal["x"], goal["y"]), (route["goal"]["x"], route["goal"]["y"]))
-            > 0.25
-        ):
-            raise ValueError("Destination must lie on the measured road centerline")
+        goal, blocked, route = self.outdoor.validated(payload)
+        if not self.hardware and not is_free(self.free, self.bundle['grid'], goal):
+            raise ValueError('Destination is not in traversable scene space')
         return goal, blocked, route
 
     def preview(self, payload):
-        _, _, route = self.validated(payload)
-        return {
-            "schema_version": 1,
-            "scene_version": self.bundle["scene_version"],
-            "route_version": self.bundle["route_version"],
-            **route,
-        }
+        return self.outdoor.preview(payload)
 
     def submit(self, payload):
-        goal, blocked, route = self.validated(payload)
-        result = self.tasks.submit(goal, blocked)
-        self.tasks.update(result["task_id"], reference_path=route["reference_path"])
-        return self.tasks.snapshot(result["task_id"])
+        return self.outdoor.submit(payload)
 
     def on_rviz_goal(self, msg):
         try:
@@ -476,7 +445,9 @@ class Navigation(Node):
             and not state["cancel_requested"]
             and state["state"] in ("navigating", "replanning")
             and self.status(False)["ready"]
-            and time.monotonic() - self.raw_received < 0.5
+            and time.monotonic() - self.raw_received < (
+                self.config["command_timeout_s"] if self.hardware else 0.5
+            )
         )
         self.command_pub.publish(self.raw_command if safe else Twist())
 
@@ -551,14 +522,14 @@ class Navigation(Node):
         self.stopping = True
         deadline, stable = time.monotonic() + 15, None
         while time.monotonic() < deadline:
-            now = self.get_clock().now().nanoseconds / 1e9
+            now = time.monotonic()
             stopped = (
-                time.monotonic() - self.velocity_at < 3
+                time.monotonic() - self.velocity_at < (self.config["sensor_timeout_s"] if self.hardware else 1)
                 and self.velocity[0] <= 0.01
                 and self.velocity[1] <= 0.01
             )
             stable = (now if stable is None else stable) if stopped else None
-            if stable is not None and now - stable >= 0.5:
+            if stable is not None and now - stable >= 1.0:
                 return True
             await self.pause()
         return False
@@ -695,6 +666,7 @@ class Navigation(Node):
                 state["blocked_road_ids"],
             )
             await self.prepare_route(route, task_id)
+            tolerance = state.get("arrival_tolerance_m") or self.arrival_tolerance
             goal_point = state["goal"]
             guidance = RouteGuidance(route["reference_path"], self.pose(), goal_point)
             self.tasks.update(task_id, reference_path=route["reference_path"])
@@ -718,7 +690,8 @@ class Navigation(Node):
                 remaining = math.dist(
                     (position["x"], position["y"]), (goal_point["x"], goal_point["y"])
                 )
-                self.tasks.update(task_id, distance_remaining_m=remaining)
+                route_remaining = length([position, *guidance.points[guidance.index:]])
+                self.tasks.update(task_id, distance_remaining_m=route_remaining)
                 feedback = NavigateToPose.Feedback()
                 feedback.current_pose.header.frame_id = "map"
                 feedback.current_pose.header.stamp = self.get_clock().now().to_msg()
@@ -730,9 +703,9 @@ class Navigation(Node):
                     feedback.current_pose.pose.orientation.z,
                     feedback.current_pose.pose.orientation.w,
                 ) = math.sin(position["yaw"] / 2), math.cos(position["yaw"] / 2)
-                feedback.distance_remaining = remaining
+                feedback.distance_remaining = route_remaining
                 handle.publish_feedback(feedback)
-                if guidance.final_leg and remaining <= self.arrival_tolerance and self.arrival_heading_ok(position, goal_point) and (
+                if guidance.final_leg and remaining <= tolerance and self.arrival_heading_ok(position, goal_point) and (
                     not current_points
                     or (
                         follow_result is not None
@@ -755,7 +728,7 @@ class Navigation(Node):
                         (goal_point["x"], goal_point["y"]),
                     )
                     self.tasks.update(task_id, distance_remaining_m=remaining)
-                    if remaining <= self.arrival_tolerance and self.arrival_heading_ok(stopped_pose, goal_point):
+                    if remaining <= tolerance and self.arrival_heading_ok(stopped_pose, goal_point):
                         outcome, stop_confirmed = "succeeded", True
                         completion_pose = stopped_pose
                         break

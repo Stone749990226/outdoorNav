@@ -4,6 +4,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import re
 import threading
+import mimetypes
+from pathlib import Path
+from urllib.parse import unquote
 
 
 class ApiError(ValueError):
@@ -12,7 +15,8 @@ class ApiError(ValueError):
         self.status = status
 
 
-def serve(backend, port=8765):
+def serve(backend, port=8765, host="127.0.0.1", web_root=None):
+    root = Path(web_root).resolve() if web_root else None
     class Handler(BaseHTTPRequestHandler):
         def respond(self, code, payload):
             body = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode()
@@ -30,7 +34,23 @@ def serve(backend, port=8765):
             try:
                 path = self.path.split("?", 1)[0]
                 if method == "GET":
-                    if path == "/api/places" and hasattr(backend, "places"):
+                    if not path.startswith('/api/') and root is not None:
+                        target = (root / unquote(path).lstrip('/')).resolve()
+                        if not target.is_relative_to(root):
+                            return self.respond(404, {'error': 'Not found'})
+                        if target.is_dir():
+                            target = target / 'index.html'
+                        if not target.is_file():
+                            return self.respond(404, {'error': 'Web asset not found; build web first'})
+                        body = target.read_bytes()
+                        self.send_response(200)
+                        self.send_header('Content-Type', mimetypes.guess_type(target.name)[0] or 'application/octet-stream')
+                        self.send_header('Content-Length', str(len(body)))
+                        self.send_header('Cache-Control', 'no-cache')
+                        self.end_headers()
+                        self.wfile.write(body)
+                        return
+                    if path == "/api/places" and getattr(backend, "places", None) is not None:
                         return self.respond(200, backend.places.snapshot())
                     if path == "/api/map":
                         return self.respond(200, backend.map_snapshot())
@@ -108,7 +128,7 @@ def serve(backend, port=8765):
         def log_message(self, *_):
             pass
 
-    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    server = ThreadingHTTPServer((host, port), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return server

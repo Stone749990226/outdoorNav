@@ -3,6 +3,9 @@
 import json
 import math
 import time
+import signal
+from rclpy.signals import SignalHandlerOptions
+from outdoornav.config import load_robot_config
 
 import rclpy
 from geometry_msgs.msg import Twist
@@ -15,6 +18,10 @@ from std_msgs.msg import String
 class Watchdog(Node):
     def __init__(self):
         super().__init__("lynx_command_watchdog")
+        self.declare_parameter('robot_config', '')
+        self.declare_parameter('diagnostic', False)
+        self.diagnostic = self.get_parameter('diagnostic').value
+        self.config = load_robot_config(self.get_parameter('robot_config').value)
         self.command, self.command_at, self.scan_at, self.geo_at = (
             Twist(),
             0.0,
@@ -23,7 +30,8 @@ class Watchdog(Node):
         )
         self.ready = False
         self.conflict = False
-        self.pub = self.create_publisher(Twist, "/cmd_vel", 10)
+        self.pub = self.create_publisher(Twist, "/outdoor/diagnostic_cmd_vel" if self.diagnostic else "/cmd_vel", 10)
+        self.status_pub = self.create_publisher(String, "/outdoor/command_status", 10)
         self.create_subscription(Twist, "/outdoor/safe_command", self.receive, 10)
         self.create_subscription(String, "/outdoor/localization", self.geo, 10)
         self.create_subscription(
@@ -33,10 +41,10 @@ class Watchdog(Node):
         self.create_timer(1.0, self.check_owners)
 
     def check_owners(self):
-        if self.count_publishers("/cmd_vel") > 1:
+        if self.count_publishers(self.pub.topic_name) > 1:
             self.conflict = True
             self.get_logger().error(
-                "Another /cmd_vel publisher detected; restart after removing it"
+                "Another command output publisher detected; restart after removing it"
             )
 
     def receive(self, msg):
@@ -44,7 +52,10 @@ class Watchdog(Node):
 
     def geo(self, msg):
         try:
-            self.ready = bool(json.loads(msg.data)["ready"])
+            data = json.loads(msg.data)
+            if not isinstance(data, dict):
+                raise ValueError("Localization status must be an object")
+            self.ready = bool(data["ready"]) and not data.get("ownership_conflict", False) and data.get("extrinsics", {}).get("ready", False)
             self.geo_at = time.monotonic()
         except (ValueError, KeyError):
             self.ready = False
@@ -55,7 +66,7 @@ class Watchdog(Node):
             - msg.header.stamp.sec
             - msg.header.stamp.nanosec / 1e9
         )
-        if -0.1 <= age < 1 and any(
+        if -0.1 <= age < self.config["sensor_timeout_s"] and any(
             math.isfinite(r) and msg.range_min < r < msg.range_max for r in msg.ranges
         ):
             self.scan_at = time.monotonic()
@@ -65,10 +76,12 @@ class Watchdog(Node):
         output = Twist()
         if (
             not self.conflict
+            and not self.diagnostic
+            and self.config["motion_enabled"]
             and self.ready
-            and now - self.geo_at < 1
-            and now - self.scan_at < 1
-            and now - self.command_at < 0.3
+            and now - self.geo_at < self.config["sensor_timeout_s"]
+            and now - self.scan_at < self.config["sensor_timeout_s"]
+            and now - self.command_at < self.config["command_timeout_s"]
         ):
             x, y, z = (
                 self.command.linear.x,
@@ -77,20 +90,36 @@ class Watchdog(Node):
             )
             if all(math.isfinite(v) for v in (x, y, z)):
                 # No reverse or lateral motion until rear coverage is validated.
-                output.linear.x = max(0.0, min(0.15, x))
-                output.angular.z = max(-0.4, min(0.4, z))
+                output.linear.x = max(0.0, min(self.config["max_speed_mps"], x))
+                output.angular.z = max(-self.config["max_angular_speed_rps"], min(self.config["max_angular_speed_rps"], z))
         self.pub.publish(output)
+        self.status_pub.publish(String(data=json.dumps({'conflict': self.conflict,
+            'diagnostic': self.diagnostic, 'output_topic': self.pub.topic_name})))
 
     def destroy_node(self):
-        self.pub.publish(Twist())
+        if rclpy.ok():
+            self.pub.publish(Twist())
         super().destroy_node()
 
 
 def main():
-    rclpy.init()
+    # Publish the final zero before shutting down the ROS context.
+    rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
     node = Watchdog()
+    stopping = False
+    def stop(*_):
+        nonlocal stopping
+        stopping = True
+    signal.signal(signal.SIGINT, stop)
+    signal.signal(signal.SIGTERM, stop)
     try:
-        rclpy.spin(node)
+        while rclpy.ok() and not stopping:
+            rclpy.spin_once(node, timeout_sec=0.05)
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()

@@ -32,6 +32,8 @@ class Task:
     distance_remaining_m: float | None = None
     reason: str | None = None
     cancel_requested: bool = False
+    localization_grade: str | None = None
+    arrival_tolerance_m: float | None = None
 
 
 class TaskStore:

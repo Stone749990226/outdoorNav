@@ -43,6 +43,9 @@ export function NavigationPanel({
       <span className="eyebrow">
         {status?.mode === "lynx" ? "山猫 / 室外导航" : "GAZEBO / 实际仿真导航"}
       </span>
+      {status?.diagnostic && (
+        <small data-testid="diagnostic-mode">诊断模式 · 底盘输出已隔离</small>
+      )}
       <div className="navigation-panel-actions">
         <button
           onClick={onExecute}
@@ -62,6 +65,15 @@ export function NavigationPanel({
       <small role="status" data-testid="navigation-status">
         {error || text}
       </small>
+      {match &&
+        status?.not_ready_reasons &&
+        status.not_ready_reasons.length > 0 && (
+          <ul data-testid="readiness-reasons">
+            {status.not_ready_reasons.map((reason) => (
+              <li key={reason.code}>{reason.message}</li>
+            ))}
+          </ul>
+        )}
       {match && status?.task && (
         <small>
           {status.mode === "lynx"
@@ -80,10 +92,15 @@ export function NavigationPanel({
       )}
       {status?.mode === "lynx" && (
         <small>
-          {status.gnss?.fixed ? "RTK 固定解" : "等待 RTK 固定解"}
+          {status.gnss?.fixed
+            ? "RTK 固定解"
+            : status.gnss?.float
+              ? "RTK 浮点解"
+              : "等待可用 RTK"}
           {status.gnss &&
             ` · 估计误差 ${status.gnss.hacc_m.toFixed(2)} m · ${status.gnss.satellites} 颗卫星`}
           {!status.ready &&
+            !status.not_ready_reasons &&
             ` · 未就绪：${Object.entries(status.health)
               .filter(([, ok]) => !ok)
               .map(
@@ -98,6 +115,7 @@ export function NavigationPanel({
                     odometry: "里程计",
                     actions: "导航执行",
                     tf: "坐标变换",
+                    exclusive_owners: "定位发布冲突",
                     lidar: "雷达",
                     global_map: "全局代价地图",
                     local_map: "局部代价地图",

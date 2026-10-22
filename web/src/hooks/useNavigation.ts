@@ -29,18 +29,21 @@ export function useNavigation() {
       clearTimeout(timer);
     };
   }, []);
-  const execute = useCallback(async (goal: Point, blocked: string[]) => {
-    setBusy(true);
-    setError("");
-    try {
-      await executeGoal(goal, blocked);
-      setStatus(await getStatus());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "导航提交失败");
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  const execute = useCallback(
+    async (goal: Point, blocked: string[], placeId?: string) => {
+      setBusy(true);
+      setError("");
+      try {
+        await executeGoal(goal, blocked, placeId);
+        setStatus(await getStatus());
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "导航提交失败");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [],
+  );
   const cancel = useCallback(async () => {
     if (!status?.task) return;
     setBusy(true);

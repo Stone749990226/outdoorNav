@@ -223,7 +223,7 @@ class SensorOnlyNavigationTests(unittest.TestCase):
         bundle = load_bundle()
         self.position = dict(x=bundle["spawn"][0], y=bundle["spawn"][1], yaw=0, age_s=0)
         self.stack.enter_context(patch.object(nav.Navigation, "pose", return_value=self.position))
-        self.stack.enter_context(patch.object(nav.Navigation, "status", return_value={"ready": True}))
+        self.stack.enter_context(patch.object(nav.Navigation, "status", return_value={"ready": True, "pose": self.position}))
         self.node = nav.Navigation()
 
     def test_initialization_publishes_only_sensor_prediction_not_scene_or_roads(self):
@@ -531,8 +531,8 @@ class SensorOnlyNavigationTests(unittest.TestCase):
         node.follow_client.send_goal_async.assert_called_once()
         handle.succeed.assert_not_called()
         self.assertEqual(node.tasks.snapshot(task_id)["state"], "canceled")
-        # Distance feedback always describes the final destination, not the via.
-        self.assertAlmostEqual(handle.publish_feedback.call_args.args[0].distance_remaining, 0.1)
+        # Remaining distance includes the U-shaped road rather than the nearby goal shortcut.
+        self.assertAlmostEqual(handle.publish_feedback.call_args.args[0].distance_remaining, 20.1)
 
     def test_only_final_goal_completes_after_stop_confirmation(self):
         node, nav = self.node, self.navigation

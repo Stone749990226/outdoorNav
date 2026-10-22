@@ -94,12 +94,20 @@ def task(run_id):
 @service.mcp("robonix/service/outdoor/navigate/status")
 def status(req: Status_Request) -> Status_Response:
     """查询室外导航任务。空 run_id 查询最近任务；SUCCEEDED 表示确认到达并停车。"""
+    info = None
     try:
-        result = task(req.run_id)
+        if req.run_id:
+            result = task(req.run_id)
+        else:
+            info = request("/api/status")
+            result = info["task"]
     except ValueError as error:
         return Status_Response(known=False, state="UNKNOWN", detail=str(error))
     if result is None:
-        return Status_Response(known=False, state="UNKNOWN", detail="No task")
+        reasons = [reason["message"] for reason in (info or {}).get("not_ready_reasons", [])]
+        if (info or {}).get("diagnostic"):
+            reasons.insert(0, "诊断模式：底盘输出已隔离")
+        return Status_Response(known=False, state="UNKNOWN", detail="；".join(reasons) or "No task")
     state = {"succeeded": "SUCCEEDED", "failed": "FAILED", "canceled": "CANCELED"}.get(
         result["state"], "RUNNING"
     )

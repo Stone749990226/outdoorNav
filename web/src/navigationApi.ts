@@ -25,11 +25,16 @@ export type NavigationStatus = {
   mode?: "lynx" | "simulation";
   gnss?: {
     fixed: boolean;
+    float?: boolean;
     hacc_m: number;
     satellites: number;
     correction_age_s: number | null;
   } | null;
+  diagnostic?: boolean;
+  command_topic?: string;
+  not_ready_reasons?: { code: string; message: string }[];
   pose_source?: string;
+  localization_grade?: "fixed" | "float" | null;
   schema_version: number;
   ready: boolean;
   run_id: string;
@@ -92,19 +97,32 @@ export const getPlaces = (signal?: AbortSignal) =>
     undefined,
     signal,
   );
-const payload = (goal: Point, blocked: string[]) => ({
+export const requestId = () =>
+  Array.from(crypto.getRandomValues(new Uint8Array(16)), (value) =>
+    value.toString(16).padStart(2, "0"),
+  ).join("");
+const payload = (goal: Point, blocked: string[], placeId?: string) => ({
   frame_id: "map",
   scene_version: bundle.scene_version,
   route_version: bundle.route_version,
   goal: toMap(goal),
   blocked_road_ids: blocked,
-  request_id: crypto.randomUUID().replaceAll("-", ""),
+  request_id: requestId(),
+  ...(placeId ? { place_id: placeId } : {}),
 });
 export const getStatus = (signal?: AbortSignal) =>
   request<NavigationStatus>("/api/status", "GET", undefined, signal);
-export const previewRoute = (goal: Point, blocked: string[]) =>
-  request<RoutePreview>("/api/plans", "POST", payload(goal, blocked));
-export const executeGoal = (goal: Point, blocked: string[]) =>
-  request<NavigationTask>("/api/tasks", "POST", payload(goal, blocked));
+export const previewRoute = (
+  goal: Point,
+  blocked: string[],
+  placeId?: string,
+) =>
+  request<RoutePreview>("/api/plans", "POST", payload(goal, blocked, placeId));
+export const executeGoal = (goal: Point, blocked: string[], placeId?: string) =>
+  request<NavigationTask>(
+    "/api/tasks",
+    "POST",
+    payload(goal, blocked, placeId),
+  );
 export const cancelTask = (id: string) =>
   request<NavigationTask>(`/api/tasks/${id}/cancel`, "POST");

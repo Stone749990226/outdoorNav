@@ -1,0 +1,21 @@
+# Observed front Airy configuration. Only start when its UDP ports are free.
+common:
+  msg_source: 1
+  send_point_cloud_ros: true
+lidar:
+  - driver:
+      lidar_type: RSAIRY
+      msop_port: 6691
+      difop_port: 7781
+      imu_port: 6681
+      host_address: 10.21.33.200
+      group_address: 224.10.10.201
+      min_distance: 0.2
+      max_distance: 200
+      dense_points: true
+      use_lidar_clock: true
+      ts_first_point: false
+    ros:
+      ros_frame_id: airy_201
+      ros_send_point_cloud_topic: /airy_201/points
+      ros_send_imu_data_topic: /airy_201/imu

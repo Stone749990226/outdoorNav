@@ -13,6 +13,10 @@
 /.ros-build/
 /.ros-install/
 /.ros-log/
+/.lio-src/
+/.lio-build/
+/.lio-install/
+/.lio-log/
 
 # Crash dumps land in the tree root and show up as untracked noise.
 /core.*

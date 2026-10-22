@@ -1,6 +1,8 @@
-# OutdoorNav 室外导航仿真
+# OutdoorNav 室外导航
 
 从实测 UBX 轨迹还原校园路网，在 Gazebo Fortress 三维场景中模拟小车、GNSS、IMU、雷达和深度相机。网页选择目标后，后端沿路网选路，Nav2 使用传感器代价地图，沿道路参考路线分段规划、控制和绕障。
+
+山猫实机使用同一套路网执行器，部署和现场验收见 [山猫部署说明](deploy/lynx/README.md)；实施状态见 [计划](docs/plan.md)。默认关闭实机运动。
 
 ## 环境
 
