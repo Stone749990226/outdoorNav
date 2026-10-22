@@ -46,6 +46,9 @@ rbnx boot -f robonix_manifest.outdoor.yaml
 
 ## 雷达＋IMU 连续里程计
 
+用户后续计划采用双天线 GNSS 定向，新接收机已在山猫安装驱动并完成室内串口采集；
+室外测试入口、实测状态和生产接入边界见 [双天线 RTK](../../docs/dual-rtk.md)。以下 LIO 仍为保留候选。
+
 新增 FAST-LIO2 ROS 2 后端，使用固定版本 `Ericsii/FAST_LIO_ROS2@2fffc570`。
 链路为 Airy 原始点云／IMU → 输入适配 → FAST-LIO → 机身原点里程计 → 现有 GNSS 地图对齐。
 后端动态 TF 隔离到 `/outdoor/lio/tf`；只有原定位节点发布室外动态 TF。
