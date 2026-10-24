@@ -45,7 +45,7 @@ def packet(lat, lon, epoch, grade="float"):
     return f'${body}*{check:02X}\r\n'.encode(), b'\xb5\x62' + data + bytes([a, b])
 
 
-def main():
+def main(dual_heading=False):
     # Neither the replay nor the command watchdog can reach the robot's domain 0.
     os.environ['ROS_DOMAIN_ID'] = '87'
     os.environ['ROS_LOCALHOST_ONLY'] = '1'
@@ -53,8 +53,11 @@ def main():
     config = json.loads((ROOT / 'deploy/lynx/robot.json').read_text())
     config.update({key: True for key in ('calibrated', 'antenna_offset_confirmed',
                   'footprint_confirmed', 'cloud_frame_confirmed', 'odometry_confirmed')})
-    config.update(motion_enabled=False, odom_topic='/test/native_odom', cloud_topic='/test/cloud',
+    config.update(heading_source='dual_antenna' if dual_heading else 'configured', motion_enabled=False, odom_topic='/test/native_odom', cloud_topic='/test/cloud',
                   gnss_udp_port=28765, http_port=18765)
+    if dual_heading:
+        config['dual_heading'].update(udp_port=28766, mounting_confirmed=True,
+                                     quality_confirmed=True, baseline_to_body_yaw_rad=0.0)
     bundle = load_bundle(ROOT / 'scenes/north_campus/generated/bundle.json')
     x, y = bundle['spawn'][:2]
     origin = bundle['origin_wgs84']
@@ -92,7 +95,7 @@ def main():
         status = None
         iteration, epoch = 0, 0
 
-        def pump(seconds, *, gnss=True, cloud_on=True, odom_on=True, duplicate=False, grade='float'):
+        def pump(seconds, *, gnss=True, cloud_on=True, odom_on=True, duplicate=False, grade='float', heading_on=True, heading_valid=True):
             nonlocal iteration, epoch, status
             deadline = time.monotonic() + seconds
             while time.monotonic() < deadline:
@@ -119,6 +122,13 @@ def main():
                         epoch += 100
                     for raw in packet(lat, lon, epoch, grade):
                         udp.sendto(struct.pack('!d', time.monotonic()) + raw, ('127.0.0.1', 28765))
+                if dual_heading and heading_on:
+                    body = 'GNTHS,90,A' if heading_valid else 'GNTHS,,V'
+                    check = 0
+                    for byte in body.encode():
+                        check ^= byte
+                    raw = f'${body}*{check:02X}\r\n'.encode()
+                    udp.sendto(struct.pack('!d', time.monotonic())+raw, ('127.0.0.1', 28766))
                 iteration += 1
                 rclpy.spin_once(node, timeout_sec=0.1)
                 try:
@@ -142,6 +152,17 @@ def main():
             assert node.count_subscribers('/outdoor/tf') >= 3
             assert output and all(values == (0.0, 0.0) for values in output)
             assert b'<!doctype html>' in urlopen(base + '/').read().lower()
+            if dual_heading:
+                assert status['heading']['ready'] and status['health']['heading'], status
+                assert status['position_source'] == 'ublox_nav_pvt', status
+                pump(2, heading_on=False)
+                assert not status['health']['heading'] and not status['health']['localization'], status
+                pump(1)
+                assert status['health']['heading'] and status['health']['localization'], status
+                pump(.5, heading_valid=False)
+                assert not status['health']['heading'], status
+                pump(1)
+                assert status['health']['heading'], status
             request = SetParametersAtomically.Request()
             request.parameters = [Parameter('goal_checker.xy_goal_tolerance', value=1.5).to_parameter_msg()]
             assert client.wait_for_service(timeout_sec=2)
@@ -240,6 +261,17 @@ def live_diagnostic():
             assert status['odometry_source'] is None
             assert status['command_topic'] == '/outdoor/diagnostic_cmd_vel'
             assert b'<!doctype html>' in urlopen(base + '/').read().lower()
+            if dual_heading:
+                assert status['heading']['ready'] and status['health']['heading'], status
+                assert status['position_source'] == 'ublox_nav_pvt', status
+                pump(2, heading_on=False)
+                assert not status['health']['heading'] and not status['health']['localization'], status
+                pump(1)
+                assert status['health']['heading'] and status['health']['localization'], status
+                pump(.5, heading_valid=False)
+                assert not status['health']['heading'], status
+                pump(1)
+                assert status['health']['heading'], status
             duplicate = subprocess.run(command, cwd=ROOT, env=env, stdout=subprocess.PIPE,
                                        stderr=subprocess.STDOUT, timeout=5)
             assert duplicate.returncode != 0 and b'already running' in duplicate.stdout
@@ -293,5 +325,6 @@ def live_diagnostic():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--live-diagnostic', action='store_true', help='Real read-only inputs; never publish physical commands')
+    parser.add_argument('--dual-heading', action='store_true', help='Separate synthetic position/heading in the isolated domain')
     args = parser.parse_args()
-    live_diagnostic() if args.live_diagnostic else main()
+    live_diagnostic() if args.live_diagnostic else main(args.dual_heading)

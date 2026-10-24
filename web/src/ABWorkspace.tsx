@@ -193,17 +193,17 @@ export function ABWorkspace() {
     const token = ++generation.current;
     setBusy(true);
     try {
-      const next =
-        online || (hardware && pose)
-          ? referenceResult(await previewRoute(b, blocked, placeId))
-          : planAB(a, b, blocked);
+      const backendPreview = online || (hardware && !!pose);
+      const next = backendPreview
+        ? referenceResult(await previewRoute(b, blocked, placeId))
+        : planAB(a, b, blocked);
       if (generation.current !== token) return;
       next.blocked = [...blocked];
       setResult(next);
       setPreview(null);
       setMessage(
         next.error ??
-          `路线已生成 · ${next.waypoints.length} 个重要途经点 · ${online ? "后端参考路线" : "离线预览"}`,
+          `路线已生成 · ${next.waypoints.length} 个重要途经点 · ${backendPreview ? "后端参考路线" : "离线预览"}`,
       );
     } catch (error) {
       if (generation.current === token)

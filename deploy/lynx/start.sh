@@ -41,6 +41,15 @@ case "$task_gnss_mode" in
   observe) echo 'GNSS observation only: no serial reader will be started' ;;
   *) echo 'LYNX_GNSS_MODE must be managed or observe'; exit 2 ;;
 esac
+if "$task_root/.venv/bin/python" -c 'import sys; from outdoornav.config import load_robot_config; sys.exit(load_robot_config(sys.argv[1])["heading_source"] != "dual_antenna")' "$task_config"; then
+  task_heading_mode="${LYNX_HEADING_MODE:-managed}"
+  if [[ "$task_diagnostic" == true && -z "${LYNX_HEADING_MODE:-}" ]]; then task_heading_mode=observe; fi
+  case "$task_heading_mode" in
+    managed) start_child "$task_root/.venv/bin/python" "$task_root/deploy/lynx/heading_stream.py" --config "$task_config" ;;
+    observe) echo 'Heading observation only: no serial reader will be started' ;;
+    *) echo 'LYNX_HEADING_MODE must be managed or observe'; exit 2 ;;
+  esac
+fi
 start_child ros2 launch outdoornav_ros lynx.launch.py \
   bundle:="$task_root/scenes/north_campus/generated/bundle.json" \
   robot_config:="$task_config" places:="$task_places" run_dir:="$task_run" \

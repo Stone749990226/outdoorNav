@@ -13,7 +13,7 @@ bash deploy/lynx/start.sh --diagnostic
 
 打开 **http://10.29.1.4:8765/** 查看真实传感器状态和全部未就绪原因。诊断模式拒绝导航任务，
 最终速度只发布到 `/outdoor/diagnostic_cmd_vel`，不向真实 `/cmd_vel` 发布，包括退出时的零速。
-该模式默认 `LYNX_GNSS_MODE=observe`：不启动串口采集者，不占用现有 GNSS 端口；
+该模式默认 `LYNX_GNSS_MODE=observe`、`LYNX_HEADING_MODE=observe`：不启动位置或航向串口采集者，不占用现有 GNSS 端口；
 网页没有定位数据时先检查采集链路，不要降低 RTK 门槛。正常生产默认由服务管理唯一采集进程。
 
 `Ctrl+C` 结束本次诊断并清理本服务子进程。不会停止厂商底盘程序或当前正式 Robonix 部署。
@@ -46,7 +46,7 @@ rbnx boot -f robonix_manifest.outdoor.yaml
 
 ## 雷达＋IMU 连续里程计
 
-用户后续计划采用双天线 GNSS 定向，新接收机已在山猫安装驱动并完成室内串口采集；
+位置保留原 u-blox RTK，绝对航向由新双天线接收机提供；两路已接入同一定位／诊断接口。
 室外测试入口、实测状态和生产接入边界见 [双天线 RTK](../../docs/dual-rtk.md)。以下 LIO 仍为保留候选。
 
 新增 FAST-LIO2 ROS 2 后端，使用固定版本 `Ericsii/FAST_LIO_ROS2@2fffc570`。
@@ -123,7 +123,7 @@ source /opt/ros/humble/setup.bash
 
 - **不使用 `/ODOM`。**`odom_topic` 默认留空，诊断服务不订阅该话题，配置加载也拒绝将它设为定位源。
 - 可靠连续里程计来源尚待确认；明确接入并验证直行、转弯和重置前，保持 `odometry_confirmed=false`。
-- 实测初始 ENU 航向、天线前／左偏移与地图偏移，确认后设置 `calibrated`、`antenna_offset_confirmed`。
+- 实测双天线基线到车头的安装角、原 RTK 天线前／左偏移与地图偏移；对应确认项须由实测产生。`initial_heading_rad` 仅在显式 `heading_source=configured` 的旧模式或隔离测试中使用，新双天线模式不回退到它。
 - 实测保守包围机器人运动外形的半径，验证雷达高度带和覆盖后设置 `footprint_confirmed`、`cloud_frame_confirmed`。
 - `motion_enabled` 默认 false；完成以上确认后才允许现场运动。
 - NTRIP 凭据继续保存在 `/home/nvidia/ntrip/ntrip.conf`，由其虚拟环境运行；文件锁确保单一串口读取者。
@@ -132,8 +132,23 @@ source /opt/ros/humble/setup.bash
 缺少改正年龄保持未就绪，不能用 RTCM 到达时间替代。数据重复不刷新有效期，传感器过期停止运动。
 任务固定验收档位；固定解任务降为浮点解时停车，浮点解任务的到达容差为 1.5 m，固定解为 0.5 m。
 
-定位采用原始里程计、显式初始航向和 GNSS 平移校正，不是完整惯导融合；长期航向漂移必须实测。
+定位以可靠连续里程计为基础，由原 u-blox 提供 GNSS 平移校正，新双天线提供绝对航向校正；不是完整惯导融合，采样延迟与真实精度仍须实测。
 里程计重置或定位跳变会锁止，检查后重启。未配置可靠来源时保持未就绪，不自动回退到 ICP 或 GNSS-only 里程计。
+
+## 位置与航向分别接入
+
+`heading_source=dual_antenna` 是当前配置。位置沿用 `/home/nvidia/ntrip` 的唯一采集者、千寻差分和 UBX NAV-PVT 解码；不改写该目录配置。新 `heading_stream.py` 只读 `/dev/rtk`，不注入差分、不使用它的 GGA 替代原 RTK 位置。两路通过各自的本机 UDP 端口输入定位节点（位置 18765、航向 18766）。
+
+`dual_heading.baseline_to_body_yaw_rad` 为实测基线至车头逆时针角，未知必须为 null；`mounting_confirmed` 与 `quality_confirmed` 默认 false。THS A 才提供有效真北航向；HDT 仅显示未验证值，THS V 或超时立即撤销有效性。GGA 定位固定解不能替代双天线定向质量验证。
+
+航向换算：`body_yaw = wrap(pi/2 - radians(true_heading_deg) + mounting_offset)`。
+位置及航向各自判断新鲜度；当前按主机单调接收时间与连续里程计匹配（偏差最多 0.2 秒），THS 本身没有采样时间戳，不能宣称已完成硬件时间同步。
+
+真实室内接口检查可在独立 ROS 域下使用 `LYNX_GNSS_MODE=managed LYNX_HEADING_MODE=managed bash deploy/lynx/start.sh --diagnostic`；执行前必须确认两台接收机没有其他采集者。默认诊断仍为 observe，不抢串口。生产由同一启动脚本管理两个采集子进程，任何采集者退出会触发整组清理。
+
+`/outdoor/heading` 和 `/outdoor/localization` 提供来源、有效状态、新鲜度与安装确认信息；HTTP `/api/status` 及网页同样显示 `position_source` 和 `heading`。输入无效时不伪造位置或朝向，不给导航放行。未确认连续里程计时仍显示 `odometry_source_unconfigured`，本次接入不自动启用 `/ODOM`、LIO 或 GNSS-only 里程计。
+
+隔离测试：构建并加载 ROS 包后运行 `python3 tests/heading_ros_smoke.py`（域 91），或 `python3 tests/lynx_ros_smoke.py --dual-heading`（域 87，完整 HTTP 诊断栈）。两者均使用合成数据，禁止修改成实机域；均断言没有真实速度发布者。
 
 ## 网页和客户端
 
@@ -178,3 +193,30 @@ source .ros-install/setup.bash
 
 先做定位检查和短距离到达，再测试取消停车、障碍绕行、堵路停车、GNSS／雷达断流和进程退出。
 最后测量独立目标误差并验证重启。真实运动由现场人员执行，记录见 `docs/lynx-validation.md`。
+
+## 本地隔离完整任务测试（不连接山猫）
+
+`tests/isolated_task_flow.py` 只允许在 Docker 容器中运行，固定 ROS 域 94 和 localhost。
+它使用真实网页、HTTP／任务执行器、NavFn、DWB 与速度看门狗，传感器和底盘运动学是合成的；
+不读取串口、不调用本体姿态接口、不发布规范 `/cmd_vel` 或 `/NAV_CMD`。
+仅最终看门狗出口与执行器的输出校验采用按节点限定的 ROS 重映射，发送到 `/isolated_task_flow/cmd_vel`；
+内部控制器、平滑器的连线保持生产方式，避免全局重映射制造多发布者冲突。
+
+先在本地测试容器构建／加载 ROS 包和网页，确保 `pointcloud_to_laserscan` 及 Nav2 可用，随后运行：
+
+```bash
+# 以下命令在本地测试容器内执行，不在山猫执行。
+source /opt/ros/humble/setup.bash
+source /path/to/test-install/setup.bash
+export PYTHONPATH="$PWD:$PWD/ros_ws/src/outdoornav_ros:${PYTHONPATH:-}"
+python3 tests/isolated_task_flow.py
+```
+
+脚本启动独立端口 19865（测试网页／API）和 19866（仅虚拟环境控制），自动运行
+`web/playwright.live.config.ts` 的浏览器测试；不拦截或伪造业务 API 响应。
+到达由真实导航结果和虚拟底盘的位姿／速度反馈共同判定，不直接把任务改成成功。
+临时配置中的标定确认只针对合成场景，不能复制到实机配置。
+
+产物在 `artifacts/validation/isolated-task-flow-20261023/`：任务历史、虚拟轨迹、浏览器截图／日志及报告。
+退出会停用测试服务并清理本轮标记的子进程，正常模式的 `robot.json` 保持运动关闭。
+该测试只验证软件任务流程，不代表实机定位、避障精度或真实停车验收。

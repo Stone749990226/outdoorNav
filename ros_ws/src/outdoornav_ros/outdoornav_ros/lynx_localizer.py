@@ -22,6 +22,7 @@ from outdoornav.diagnostics import StaticFrames, json_safe
 
 from outdoornav.bundle import load_bundle
 from outdoornav.coordinates import enu
+from outdoornav.dual_rtk import DualRtkDecoder
 from outdoornav.gnss import FixDecoder
 from outdoornav.localization import GeoAlignment
 
@@ -41,6 +42,20 @@ class LynxLocalizer(Node):
         bundle = load_bundle(self.get_parameter("bundle").value)
         self.alignment = GeoAlignment(bundle["origin_wgs84"], self.config)
         self.decoder = FixDecoder(self.config)
+        self.heading_decoder = None
+        self.heading_socket = None
+        self.heading_packets = self.heading_bytes = 0
+        self.heading_rx_at = -math.inf
+        self.heading_applied_at = None
+        if self.config['heading_source'] == 'dual_antenna':
+            heading = self.config['dual_heading']
+            self.heading_decoder = DualRtkDecoder(
+                timeout_s=heading['timeout_s'],
+                baseline_to_body_yaw_rad=(heading['baseline_to_body_yaw_rad']
+                                         if heading['mounting_confirmed'] else None))
+            self.heading_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.heading_socket.bind(('127.0.0.1', heading['udp_port']))
+            self.heading_socket.setblocking(False)
         self.rx_packets, self.rx_bytes, self.rx_pvt = 0, 0, 0
         self.rx_at = -math.inf
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -50,6 +65,7 @@ class LynxLocalizer(Node):
         self.odom_pub = self.create_publisher(Odometry, "/outdoor/odom", 10)
         self.fix_pub = self.create_publisher(NavSatFix, "/outdoor/gnss/fix", 10)
         self.status_pub = self.create_publisher(String, "/outdoor/localization", 10)
+        self.heading_pub = self.create_publisher(String, "/outdoor/heading", 10)
         self.lio_status, self.lio_at = {}, -math.inf
         if self.config.get('lio', {}).get('enabled'):
             self.create_subscription(String, '/outdoor/lio/status', self.on_lio, 10)
@@ -65,6 +81,8 @@ class LynxLocalizer(Node):
         self.dynamic_tf_sub = self.create_subscription(TFMessage, '/tf', self.on_tf, 100)
         self.create_timer(1.0, self.check_tf_owners)
         self.create_timer(0.02, self.receive)
+        if self.heading_socket is not None:
+            self.create_timer(0.02, self.receive_heading)
         self.create_timer(0.1, self.status)
 
     def on_cloud(self, msg):
@@ -156,6 +174,52 @@ class LynxLocalizer(Node):
                 self.ownership_conflict = True
                 self.alignment.fault = 'conflicting_tf_owner; stop other localization and restart'
 
+    def receive_heading(self):
+        for _ in range(100):
+            try:
+                raw = self.heading_socket.recv(65535)
+            except BlockingIOError:
+                break
+            if len(raw) < 8:
+                continue
+            received = struct.unpack('!d', raw[:8])[0]
+            if not 0 <= time.monotonic()-received < self.config['dual_heading']['timeout_s']:
+                continue
+            self.heading_packets += 1
+            self.heading_bytes += len(raw)-8
+            self.heading_rx_at = received
+            self.heading_decoder.feed(raw[8:], received)
+            snapshot = self.heading_decoder.snapshot(time.monotonic())
+            # HDT/GGA packets must not extend the freshness of an old THS.
+            if self.heading_decoder.heading_at != self.heading_applied_at:
+                self.alignment.update_heading(snapshot, self.heading_decoder.heading_at)
+                self.heading_applied_at = self.heading_decoder.heading_at
+
+    def heading_status(self, now):
+        if self.heading_decoder is None:
+            return {'source': 'configured', 'ready': True,
+                    'body_yaw_enu_rad': self.config['initial_heading_rad'],
+                    'time_basis': 'configuration, not a measured absolute heading'}
+        value = self.heading_decoder.snapshot(now)
+        heading = value['heading'] or {}
+        age = now-self.heading_decoder.heading_at
+        rx_age = now-self.heading_rx_at
+        return {'source': 'dual_antenna', 'ready': self.alignment.heading_ready(now),
+                'true_heading_deg': heading.get('true_heading_deg'),
+                'heading_fresh': value['heading_fresh'],
+                'status': heading.get('status'),
+                'body_yaw_enu_rad': value['body_yaw_enu_rad'] if value['heading_fresh'] else None,
+                'mounting_confirmed': self.config['dual_heading']['mounting_confirmed'],
+                'quality_confirmed': self.config['dual_heading']['quality_confirmed'],
+                'age_s': age if math.isfinite(age) else None,
+                'receive_age_s': rx_age if math.isfinite(rx_age) else None,
+                'odom_receive_skew_s': self.alignment.heading_skew_s,
+                'time_basis': 'host_monotonic_receive; THS has no acquisition timestamp',
+                'packets': self.heading_packets, 'bytes': self.heading_bytes,
+                'counts': value['counts'], 'bad_checksums': value['bad_checksums'],
+                'malformed': value['malformed'], 'fault': value['fault'],
+                'unverified_hdt': value['unverified_hdt']}
+
     def receive(self):
         for _ in range(100):
             try:
@@ -204,15 +268,23 @@ class LynxLocalizer(Node):
     def status(self):
         a, now = self.alignment, time.monotonic()
         pose = a.pose()
-        if pose is None and a.fix and a.fix["valid"]:
+        heading = self.heading_status(now)
+        if (pose is None and a.fix and a.fix["valid"] and
+                (self.config["heading_source"] == "configured" or
+                 (heading.get("heading_fresh") and heading.get("body_yaw_enu_rad") is not None))):
             x, y = enu(a.fix["latitude"], a.fix["longitude"], a.anchor)
-            pose = {"x": x, "y": y, "yaw": self.config["initial_heading_rad"]}
+            yaw = (heading.get("body_yaw_enu_rad") if self.config["heading_source"] == "dual_antenna"
+                   else self.config["initial_heading_rad"])
+            pose = {"x": x, "y": y, "yaw": yaw}
         age = now - a.fix_at
         payload = {
             "ready": a.ready(now) and self.lio_ready(now) and not self.ownership_conflict,
             "lio": ({**self.lio_status, 'ready': self.lio_ready(now)}
                     if self.config.get('lio', {}).get('enabled') else None),
             "grade": a.grade,
+            "heading": heading,
+            "position_source": "ublox_nav_pvt",
+            "position_time_basis": "receiver_iTOW sequence; host_monotonic_receive freshness",
             "ownership_conflict": self.ownership_conflict or bool(self.static_frames.faults),
             "extrinsics": self.extrinsics(),
             "tf_conflicts": {"dynamic": self.ownership_conflict, "static": sorted(self.static_frames.faults)},
@@ -224,10 +296,13 @@ class LynxLocalizer(Node):
             "pose": pose,
             "pose_source": "aligned_odom" if a.pose() else "gnss_antenna",
         }
+        self.heading_pub.publish(String(data=json.dumps(json_safe(heading), allow_nan=False)))
         self.status_pub.publish(String(data=json.dumps(json_safe(payload), allow_nan=False)))
 
     def destroy_node(self):
         self.socket.close()
+        if self.heading_socket is not None:
+            self.heading_socket.close()
         super().destroy_node()
 
 

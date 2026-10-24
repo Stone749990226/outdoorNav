@@ -24,12 +24,26 @@ export type NavigationTask = {
 export type NavigationStatus = {
   mode?: "lynx" | "simulation";
   gnss?: {
+    valid?: boolean;
+    latitude?: number;
+    longitude?: number;
     fixed: boolean;
     float?: boolean;
     hacc_m: number;
     satellites: number;
     correction_age_s: number | null;
   } | null;
+  heading?: {
+    source: "configured" | "dual_antenna";
+    ready: boolean;
+    heading_fresh?: boolean;
+    true_heading_deg?: number | null;
+    body_yaw_enu_rad?: number | null;
+    mounting_confirmed?: boolean;
+    quality_confirmed?: boolean;
+    age_s?: number | null;
+  } | null;
+  position_source?: string;
   diagnostic?: boolean;
   command_topic?: string;
   not_ready_reasons?: { code: string; message: string }[];

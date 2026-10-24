@@ -1,0 +1,294 @@
+"""Real frontend/API/Nav2 with a virtual base; Docker-only, no robot connection."""
+
+import json
+import math
+import os
+from pathlib import Path
+import signal
+import socket
+import struct
+import subprocess
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.request import Request, urlopen
+
+if not Path('/.dockerenv').is_file():
+    raise SystemExit('Run only inside the local test Docker container, never on the robot')
+os.environ.update(ROS_DOMAIN_ID='94',ROS_LOCALHOST_ONLY='1',RMW_IMPLEMENTATION='rmw_fastrtps_cpp')
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import Twist, TransformStamped
+from nav_msgs.msg import Odometry
+from rclpy.executors import SingleThreadedExecutor
+from rclpy.qos import QoSProfile, DurabilityPolicy
+from sensor_msgs.msg import PointCloud2, PointField
+from sensor_msgs_py import point_cloud2
+from std_msgs.msg import Header
+from tf2_msgs.msg import TFMessage
+
+from outdoornav.bundle import load_bundle
+from outdoornav.config import HEADING_DEFAULTS
+from outdoornav.coordinates import local_radii
+
+ROOT=Path(__file__).resolve().parents[1]
+OUTPUT=ROOT/'artifacts/validation/isolated-task-flow-20261023'
+OUTPUT.mkdir(parents=True,exist_ok=True)
+RUN=OUTPUT/time.strftime('run-%H%M%S')
+RUN.mkdir()
+API='http://127.0.0.1:19865'
+CONTROL='http://127.0.0.1:19866'
+COMMAND='/isolated_task_flow/cmd_vel'
+for port in (19865,19866,29865,29866):
+    kind=socket.SOCK_DGRAM if port>=29000 else socket.SOCK_STREAM
+    with socket.socket(socket.AF_INET,kind) as probe:
+        if kind==socket.SOCK_STREAM:probe.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+        probe.bind(('127.0.0.1',port))
+real_config=json.loads((ROOT/'deploy/lynx/robot.json').read_text())
+assert real_config['motion_enabled'] is False
+bundle=load_bundle()
+a,b=bundle['network']['roads'][0]['points'][:2]
+distance=math.hypot(b['x']-a['x'],b['y']-a['y'])
+direction=((b['x']-a['x'])/distance,(b['y']-a['y'])/distance)
+initial_yaw=math.atan2(direction[1],direction[0])
+config={**real_config,**{key:True for key in ('calibrated','antenna_offset_confirmed',
+        'footprint_confirmed','cloud_frame_confirmed','odometry_confirmed')}}
+config.update(motion_enabled=True,odom_topic='/isolated_task_flow/native_odom',
+              cloud_topic='/isolated_task_flow/cloud',gnss_udp_port=29865,http_port=19865,
+              antenna_xy_m=[0.0,0.0],map_offset_xy_m=[0.0,0.0],heading_source='dual_antenna')
+config['dual_heading']={**HEADING_DEFAULTS,'udp_port':29866,'mounting_confirmed':True,
+                        'quality_confirmed':True,'baseline_to_body_yaw_rad':0.0}
+(RUN/'synthetic-only.json').write_text(json.dumps(config,indent=2))
+launch=f'''from launch import LaunchDescription
+from launch.actions import GroupAction, IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch_ros.actions import SetRemap
+from ament_index_python.packages import get_package_share_directory
+
+def generate_launch_description():
+    return LaunchDescription([GroupAction([
+        SetRemap(src='lynx_command_watchdog:/cmd_vel', dst='{COMMAND}'),
+        SetRemap(src='navigation:/cmd_vel', dst='{COMMAND}'),
+        IncludeLaunchDescription(PythonLaunchDescriptionSource(
+            get_package_share_directory('outdoornav_ros')+'/launch/lynx.launch.py'),
+            launch_arguments={{'bundle':'{ROOT}/scenes/north_campus/generated/bundle.json',
+              'robot_config':'{RUN}/synthetic-only.json','places':'{ROOT}/scenes/north_campus/places.json',
+              'run_dir':'{RUN}','diagnostic':'false'}}.items())
+    ])])
+'''
+(RUN/'isolated.launch.py').write_text(launch)
+
+
+def nmea(body):
+    checksum=0
+    for value in body.encode():checksum^=value
+    return f'${body}*{checksum:02X}\r\n'.encode()
+
+
+class VirtualBase(Node):
+    def __init__(self):
+        super().__init__('isolated_task_flow_virtual_base')
+        self.lock=threading.RLock()
+        self.x,self.y,self.yaw=a['x'],a['y'],initial_yaw
+        self.v=self.w=0.0
+        self.heading_valid=True
+        self.heading_stream=True
+        self.command_at=-math.inf
+        self.last_tick=time.monotonic()
+        self.epoch=0
+        self.trace=[]
+        self.events=[]
+        self.nonzero_commands=0
+        self.odom=self.create_publisher(Odometry,config['odom_topic'],10)
+        self.cloud=self.create_publisher(PointCloud2,config['cloud_topic'],10)
+        self.static=self.create_publisher(TFMessage,'/tf_static',QoSProfile(depth=10,durability=DurabilityPolicy.TRANSIENT_LOCAL))
+        mount=TransformStamped();mount.header.frame_id='base_link';mount.child_frame_id='isolated_lidar'
+        mount.transform.rotation.w=1.0;mount.transform.translation.z=.2
+        self.static.publish(TFMessage(transforms=[mount]))
+        self.create_subscription(Twist,COMMAND,self.command,10)
+        self.udp=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+        self.create_timer(.05,self.tick)
+        self.create_timer(.5,self.assert_isolation)
+        self.isolation_failure=None
+        self.east,self.north=local_radii(bundle['origin_wgs84']['latitude'])
+        self.fields=[PointField(name=axis,offset=i*4,datatype=PointField.FLOAT32,count=1)
+                     for i,axis in enumerate(('x','y','z'))]
+        # Finite free-space returns beyond marking range: live clearing, no prior map.
+        self.rays=[(7.5*math.cos(i*math.pi/360),7.5*math.sin(i*math.pi/360),.5) for i in range(720)]
+
+    def command(self,msg):
+        with self.lock:
+            self.v,self.w=msg.linear.x,msg.angular.z
+            self.command_at=time.monotonic()
+            if abs(self.v)+abs(self.w)>1e-6:self.nonzero_commands+=1
+
+    def assert_isolation(self):
+        if os.environ.get('ROS_DOMAIN_ID')!='94' or os.environ.get('ROS_LOCALHOST_ONLY')!='1':
+            self.isolation_failure='Invalid isolation environment'
+        for topic in ('/cmd_vel','/NAV_CMD'):
+            if self.count_publishers(topic):self.isolation_failure='Unexpected canonical command publisher '+topic
+
+    def tick(self):
+        with self.lock:
+            now=time.monotonic();dt=min(now-self.last_tick,.1);self.last_tick=now
+            if now-self.command_at>.4:self.v=self.w=0.0
+            self.yaw=math.atan2(math.sin(self.yaw+self.w*dt),math.cos(self.yaw+self.w*dt))
+            self.x+=self.v*math.cos(self.yaw)*dt;self.y+=self.v*math.sin(self.yaw)*dt
+            stamp=self.get_clock().now().to_msg()
+            odom=Odometry();odom.header.stamp=stamp
+            odom.header.frame_id,odom.child_frame_id='isolated_odom','isolated_base'
+            dx,dy=self.x-a['x'],self.y-a['y'];c,s=math.cos(initial_yaw),math.sin(initial_yaw)
+            odom.pose.pose.position.x,odom.pose.pose.position.y=c*dx+s*dy,-s*dx+c*dy
+            yaw=self.yaw-initial_yaw
+            odom.pose.pose.orientation.z,odom.pose.pose.orientation.w=math.sin(yaw/2),math.cos(yaw/2)
+            odom.twist.twist.linear.x,odom.twist.twist.angular.z=self.v,self.w
+            self.odom.publish(odom)
+            self.cloud.publish(point_cloud2.create_cloud(Header(stamp=stamp,frame_id='isolated_lidar'),self.fields,self.rays))
+            self.epoch+=50
+            lat=bundle['origin_wgs84']['latitude']+math.degrees(self.y/self.north)
+            lon=bundle['origin_wgs84']['longitude']+math.degrees(self.x/self.east)
+            payload=bytearray(92);struct.pack_into('<I',payload,0,self.epoch)
+            payload[20],payload[21],payload[23]=3,3|(2<<6),20
+            struct.pack_into('<iiiiII',payload,24,round(lon*1e7),round(lat*1e7),0,0,100,150)
+            raw=bytes([1,7,92,0])+payload;aa=bb=0
+            for value in raw:aa=(aa+value)&255;bb=(bb+aa)&255
+            for raw in (nmea('GNGGA,120000,3000.0,N,12000.0,E,4,20,0.8,0,M,0,M,1,0001'),b'\xb5\x62'+raw+bytes([aa,bb])):
+                self.udp.sendto(struct.pack('!d',now)+raw,('127.0.0.1',29865))
+            heading=(90-math.degrees(self.yaw))%360
+            raw=nmea(f'GNTHS,{heading:.8f},A') if self.heading_valid else nmea('GNTHS,,V')
+            if self.heading_stream:
+                self.udp.sendto(struct.pack('!d',now)+raw,('127.0.0.1',29866))
+            self.trace.append({'time':now,'x':self.x,'y':self.y,'yaw':self.yaw,'v':self.v,'w':self.w,
+                               'heading_valid':self.heading_valid,'heading_stream':self.heading_stream})
+
+    def snapshot(self):
+        with self.lock:
+            return {'domain':94,'localhost_only':True,'virtual_only':True,'command_topic':COMMAND,
+                'x':self.x,'y':self.y,'yaw':self.yaw,'v':self.v,'w':self.w,
+                'start':a,'direction':direction,'nonzero_commands':self.nonzero_commands,
+                'heading_stream':self.heading_stream,'isolation_failure':self.isolation_failure,'backend_pid':backend.pid if backend else None}
+
+
+def http(path,body=None):
+    req=Request(API+path,data=json.dumps(body).encode() if body is not None else None,
+                headers={'Content-Type':'application/json'})
+    with urlopen(req,timeout=2) as response:return json.load(response)
+
+
+rclpy.init(args=[])
+virtual=VirtualBase();executor=SingleThreadedExecutor();executor.add_node(virtual)
+thread=threading.Thread(target=executor.spin,daemon=True);thread.start()
+backend=None;browser=None;server=None
+report={'scope':'real frontend/HTTP/task executor/Nav2, simulated sensors and virtual kinematics',
+        'robot_connection':False,'domain':94,'command_topic':COMMAND,'passed':False}
+log=(RUN/'stack.log').open('w')
+
+
+class Control(BaseHTTPRequestHandler):
+    def reply(self,value):
+        data=json.dumps(value).encode();self.send_response(200);self.end_headers();self.wfile.write(data)
+    def do_GET(self):
+        if self.path!='/scope':self.send_error(404);return
+        self.reply(virtual.snapshot())
+    def do_POST(self):
+        data=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+        if self.path=='/heading' and type(data.get('valid')) is bool:
+            with virtual.lock:
+                virtual.heading_valid=data['valid']
+                if type(data.get('stream')) is bool:virtual.heading_stream=data['stream']
+            self.reply({'ok':True})
+        elif self.path=='/event':
+            virtual.events.append(data);self.reply({'ok':True})
+        else:self.send_error(400)
+    def log_message(self,*_):pass
+
+
+try:
+    env={**os.environ,'OUTDOORNAV_WEB_ROOT':str(ROOT/'web/dist'),
+         'OUTDOORNAV_TASK_FLOW_RUN':str(RUN)}
+    backend=subprocess.Popen(['ros2','launch',str(RUN/'isolated.launch.py')],env=env,
+                             stdout=log,stderr=log,start_new_session=True)
+    server=ThreadingHTTPServer(('127.0.0.1',19866),Control)
+    threading.Thread(target=server.serve_forever,daemon=True).start()
+    deadline=time.monotonic()+50;status=None
+    while time.monotonic()<deadline:
+        if backend.poll() is not None:raise RuntimeError('Stack exited')
+        if virtual.isolation_failure:raise RuntimeError(virtual.isolation_failure)
+        try:
+            status=http('/api/status')
+            if not status['health']['service_active']:http('/api/activation',{'active':True})
+            if status['ready']:break
+        except OSError:pass
+        time.sleep(.2)
+    if not status or not status['ready']:raise RuntimeError('Not ready: '+json.dumps(status))
+    assert status['command_topic']==COMMAND,status
+    report['initial_status']=status
+    print('ISOLATED_TASK_FLOW_READY '+str(RUN),flush=True)
+    browser_log=(RUN/'browser.log').open('w')
+    browser=subprocess.Popen(['npx','playwright','test','--config','playwright.live.config.ts',
+         '--output',str(RUN/'browser-artifacts')],cwd=ROOT/'web',stdout=browser_log,stderr=browser_log,
+         env={**os.environ,'OUTDOORNAV_LIVE_TEST':'1'},start_new_session=True)
+    deadline=time.monotonic()+340
+    history=[]
+    while time.monotonic()<deadline and browser.poll() is None:
+        if backend.poll() is not None:raise RuntimeError('Stack exited during browser test')
+        if virtual.isolation_failure:raise RuntimeError(virtual.isolation_failure)
+        try:
+            status=http('/api/status')
+            task=status.get('task')
+            history.append({'time':time.monotonic(),'task':task,'ready':status['ready']})
+        except OSError:pass
+        time.sleep(.15)
+    if browser.poll() is None:raise TimeoutError('Browser task-flow test exceeded 340 seconds')
+    browser_log.close()
+    report['browser_returncode']=browser.returncode
+    report['events']=virtual.events
+    report['final_scope']=virtual.snapshot()
+    report['final_status']=http('/api/status')
+    report['passed']=browser.returncode==0 and virtual.isolation_failure is None
+    (RUN/'task-history.json').write_text(json.dumps(history,indent=2))
+    if not report['passed']:raise RuntimeError('Task flow failed; inspect '+str(RUN/'browser.log'))
+finally:
+    # Request cancellation before stopping the isolated stack, including on assertion failure.
+    if backend and backend.poll() is None:
+        try:http('/api/activation',{'active':False})
+        except Exception:pass
+    if browser and browser.poll() is None:
+        os.killpg(browser.pid,signal.SIGTERM);browser.wait(timeout=10)
+    if backend and backend.poll() is None:
+        os.killpg(backend.pid,signal.SIGINT)
+        try:backend.wait(timeout=25)
+        except subprocess.TimeoutExpired:os.killpg(backend.pid,signal.SIGKILL);backend.wait()
+    # Launch errors can leave children alive after the launch process exits.
+    # Only our unique inherited marker can authorize cleanup of such a child.
+    marker=('OUTDOORNAV_TASK_FLOW_RUN='+str(RUN)).encode()
+    remaining=[]
+    for proc in Path('/proc').iterdir():
+        if not proc.name.isdigit():continue
+        try:
+            if marker not in (proc/'environ').read_bytes().split(b'\0'):continue
+            if (proc/'stat').read_text().split()[2]=='Z':continue
+            remaining.append(int(proc.name))
+            os.kill(int(proc.name),signal.SIGINT)
+        except (OSError,ProcessLookupError):pass
+    def alive(pid):
+        try:return Path(f'/proc/{pid}/stat').read_text().split()[2]!='Z'
+        except OSError:return False
+    deadline=time.monotonic()+5
+    while time.monotonic()<deadline and remaining:
+        remaining=[pid for pid in remaining if alive(pid)]
+        if remaining:time.sleep(.1)
+    for pid in remaining:
+        try:
+            proc=Path(f'/proc/{pid}')
+            if marker in (proc/'environ').read_bytes().split(b'\0'):os.kill(pid,signal.SIGKILL)
+        except OSError:pass
+    report['marked_children_requiring_cleanup']=remaining
+    if server:server.shutdown();server.server_close()
+    report['backend_returncode']=backend.returncode if backend else None
+    report['final_virtual_speed']=[virtual.v,virtual.w]
+    (RUN/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
+    (RUN/'virtual-trajectory.json').write_text(json.dumps(virtual.trace))
+    (OUTPUT/'latest-run.txt').write_text(str(RUN))
+    log.close();executor.shutdown();thread.join(timeout=3);virtual.udp.close();virtual.destroy_node();rclpy.shutdown()
+    print('ISOLATED_TASK_FLOW_REPORT '+json.dumps(report,ensure_ascii=False),flush=True)

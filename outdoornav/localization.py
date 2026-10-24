@@ -24,6 +24,10 @@ class GeoAlignment:
         self.fix_at = -math.inf
         self.last_tow = None
         self.fix = None
+        self.heading_yaw = None
+        self.heading_at = -math.inf
+        self.heading_valid = False
+        self.heading_skew_s = None
 
     def odom(self, x, y, yaw, stamp, received):
         if not all(math.isfinite(v) for v in (x, y, yaw, stamp)):
@@ -40,10 +44,46 @@ class GeoAlignment:
             ):
                 self.fault = "odometry_reset_or_gap; recalibrate and restart"
                 return False
-        if self.rotation is None:
+        if self.rotation is None and self.config.get('heading_source', 'configured') == 'configured':
             self.rotation = wrap(self.config["initial_heading_rad"] - yaw)
         self.history.append((x, y, yaw, stamp, received))
         return True
+
+    def update_heading(self, observation, received):
+        self.heading_valid = False
+        self.heading_skew_s = None
+        yaw = observation.get('body_yaw_enu_rad')
+        if (not observation.get('heading_fresh') or yaw is None or
+                not isinstance(yaw, (int, float)) or not math.isfinite(yaw) or
+                observation.get('fault')):
+            return
+        self.heading_yaw, self.heading_at = wrap(yaw), received
+        self.heading_valid = True
+        if not self.history:
+            return
+        sample = min(self.history, key=lambda p: abs(p[4]-received))
+        self.heading_skew_s = abs(sample[4]-received)
+        if self.heading_skew_s > 0.2:
+            return
+        new_rotation = wrap(yaw-sample[2])
+        if self.translation is not None and self.rotation is not None:
+            # Correct global heading without moving the current robot position.
+            x, y = sample[:2]
+            old_c, old_s = math.cos(self.rotation), math.sin(self.rotation)
+            new_c, new_s = math.cos(new_rotation), math.sin(new_rotation)
+            px = old_c*x-old_s*y+self.translation[0]
+            py = old_s*x+old_c*y+self.translation[1]
+            self.translation = (px-new_c*x+new_s*y, py-new_s*x-new_c*y)
+        self.rotation = new_rotation
+
+    def heading_ready(self, now):
+        if self.config.get('heading_source', 'configured') == 'configured':
+            return True
+        heading = self.config['dual_heading']
+        return bool(heading['mounting_confirmed'] and heading['quality_confirmed']
+                    and self.heading_valid and self.rotation is not None
+                    and self.heading_skew_s is not None and self.heading_skew_s <= 0.2
+                    and 0 <= now-self.heading_at < heading['timeout_s'])
 
     def update_fix(self, fix, received):
         grade = fix_grade(fix, self.config)
@@ -66,7 +106,7 @@ class GeoAlignment:
         if grade != self.grade:
             self.stable_since = None
         self.grade = grade
-        if grade is None or not self.history:
+        if grade is None or not self.history or self.rotation is None:
             self.stable_since = None
             return
         sample = min(self.history, key=lambda p: abs(p[4] - received))
@@ -104,6 +144,7 @@ class GeoAlignment:
         return bool(
             self.config["calibrated"]
             and not self.fault
+            and self.heading_ready(now)
             and self.history
             and 0 <= now - self.history[-1][4] < self.config['sensor_timeout_s']
             and 0 <= now - self.fix_at < self.config['sensor_timeout_s']
@@ -112,7 +153,7 @@ class GeoAlignment:
         )
 
     def pose(self):
-        if not self.history or self.translation is None:
+        if not self.history or self.translation is None or self.rotation is None:
             return None
         x, y, yaw = self.history[-1][:3]
         c, s = math.cos(self.rotation), math.sin(self.rotation)

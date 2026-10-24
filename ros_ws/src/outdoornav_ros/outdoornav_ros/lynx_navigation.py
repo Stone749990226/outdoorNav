@@ -95,6 +95,7 @@ class LynxNavigation(Navigation):
         health.update({
             'localization': bool(geo.get('ready')) and now - self.geo_at < timeout
                             and (required != 'fixed' or grade == 'fixed'),
+            'heading': bool(geo.get('heading', {}).get('ready')) if config['heading_source'] == 'dual_antenna' else True,
             'calibration': config['calibrated'] and config['antenna_offset_confirmed']
                            and config['footprint_confirmed'] and config['cloud_frame_confirmed'],
             'motion_enabled': config['motion_enabled'],
@@ -105,7 +106,7 @@ class LynxNavigation(Navigation):
             'odometry': config['odometry_confirmed'] and now - self.velocity_at < self.config["sensor_timeout_s"],
             'actions': self.path_client.server_is_ready() and self.follow_client.server_is_ready(),
             'exclusive_owners': not geo.get('ownership_conflict', False) and not self.guard.get('conflict', False),
-            'command_guard': now - self.guard_at < timeout and self.guard.get('output_topic') == (
+            'command_guard': now - self.guard_at < timeout and self.guard.get('output_topic') == self.resolve_topic_name(
                 '/outdoor/diagnostic_cmd_vel' if self.diagnostic else '/cmd_vel'),
         })
         for name in self.lifecycle_clients:
@@ -122,10 +123,11 @@ class LynxNavigation(Navigation):
                 'diagnostic': self.diagnostic,
                 'odometry_source': config.get('odom_topic') or None,
                 'tf_conflicts': geo.get('tf_conflicts', {}),
-                'command_topic': '/outdoor/diagnostic_cmd_vel' if self.diagnostic else '/cmd_vel',
+                'command_topic': self.resolve_topic_name('/outdoor/diagnostic_cmd_vel' if self.diagnostic else '/cmd_vel'),
                 'not_ready_reasons': readiness_reasons(health, geo),
                 'localization': geo.get('fault') or ('ok' if health['localization'] else 'waiting_for_rtk'),
                 'localization_grade': grade, 'gnss': geo.get('fix'),
+                'position_source': geo.get('position_source'), 'heading': geo.get('heading'),
                 'pose_source': geo.get('pose_source'), 'pose': pose,
                 'task': self.tasks.snapshot() if include_task else None}
 

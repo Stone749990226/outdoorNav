@@ -38,6 +38,15 @@ test("Lynx position remains visible before readiness; confirmed place uses share
         task,
         localization: ready ? "ok" : "waiting_for_rtk",
         health: { localization: ready },
+        heading: {
+          source: "dual_antenna",
+          ready,
+          heading_fresh: ready,
+          true_heading_deg: ready ? 90 : null,
+          body_yaw_enu_rad: ready ? 0 : null,
+          mounting_confirmed: ready,
+          quality_confirmed: ready,
+        },
         gnss: {
           fixed: ready,
           hacc_m: ready ? 0.1 : 20,
@@ -89,12 +98,21 @@ test("Lynx position remains visible before readiness; confirmed place uses share
   await expect(
     page.getByRole("button", { name: "执行导航", exact: true }),
   ).toBeDisabled();
+  await expect(page.getByTestId("heading-status")).toContainText(
+    "航向无效或已过期",
+  );
   await page.getByLabel("地图目的地").selectOption("J");
   await page.getByTestId("plan-ab").click();
   ready = true;
   await expect(
     page.getByRole("button", { name: "执行导航", exact: true }),
   ).toBeEnabled();
+  await expect(page.getByTestId("heading-status")).toContainText(
+    "真航向 90.0°",
+  );
+  await expect(page.getByTestId("heading-status")).toContainText(
+    "车体 ENU 角 0.0°",
+  );
   await page.getByRole("button", { name: "执行导航", exact: true }).click();
   await expect(page.getByTestId("execution-route")).toBeAttached();
   expect(submitted.goal.x).toBeCloseTo(places[1].x, 6);
