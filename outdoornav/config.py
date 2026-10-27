@@ -24,17 +24,6 @@ DEFAULTS = {
 }
 
 
-HEADING_DEFAULTS = {
-    'port': '/dev/rtk',
-    'baud': 115200,
-    'udp_port': 18766,
-    'timeout_s': 1.5,
-    'baseline_to_body_yaw_rad': None,
-    'mounting_confirmed': False,
-    'quality_confirmed': False,
-}
-
-
 WIT_DEFAULTS = {
     'port': '/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0',
     'baud': 9600, 'udp_port': 18767, 'timeout_s': 0.5,
@@ -88,35 +77,8 @@ def load_robot_config(path):
     if config['localization_mode'] not in ('external_odom', 'rtk_imu'):
         raise ValueError('localization_mode must be external_odom or rtk_imu')
     config.setdefault('heading_source', 'configured')
-    if config['heading_source'] not in ('configured', 'dual_antenna', 'wit_imu'):
-        raise ValueError('heading_source must be configured, dual_antenna or wit_imu')
-    heading = config.get('dual_heading', {})
-    if not isinstance(heading, dict):
-        raise ValueError('dual_heading must be an object')
-    heading = config['dual_heading'] = {**HEADING_DEFAULTS, **heading}
-    if not isinstance(heading['port'], str) or not heading['port'].startswith('/dev/'):
-        raise ValueError('Heading receiver must use an explicit /dev/ serial path')
-    if heading['baud'] not in (9600, 38400, 57600, 115200, 230400, 460800, 921600):
-        raise ValueError('Unsupported heading serial baud rate')
-    if type(heading['udp_port']) is not int or not 1024 <= heading['udp_port'] <= 65535:
-        raise ValueError('Heading UDP port must be 1024..65535')
-    if heading['udp_port'] == config['gnss_udp_port']:
-        raise ValueError('Position and heading require separate UDP inputs')
-    if (isinstance(heading['timeout_s'], bool) or not isinstance(heading['timeout_s'], (int, float))
-            or not math.isfinite(heading['timeout_s']) or not 0 < heading['timeout_s'] <= 5):
-        raise ValueError('Heading timeout must be finite and in (0, 5] seconds')
-    offset = heading['baseline_to_body_yaw_rad']
-    if offset is not None and (isinstance(offset, bool) or not isinstance(offset, (int, float))
-                               or not math.isfinite(offset)):
-        raise ValueError('Heading mounting angle must be finite radians or null')
-    for key in ('mounting_confirmed', 'quality_confirmed'):
-        if type(heading[key]) is not bool:
-            raise ValueError('Heading ' + key + ' must be an explicit boolean')
-    if heading['mounting_confirmed'] and offset is None:
-        raise ValueError('Confirmed heading mounting requires a measured angle')
-    if (config['motion_enabled'] and config['heading_source'] == 'dual_antenna'
-            and not (heading['mounting_confirmed'] and heading['quality_confirmed'])):
-        raise ValueError('Motion requires measured heading mounting and verified heading quality')
+    if config['heading_source'] not in ('configured', 'wit_imu'):
+        raise ValueError('heading_source must be configured or wit_imu')
     wit = config.get('wit_imu', {})
     if not isinstance(wit, dict):
         raise ValueError('wit_imu must be an object')
@@ -127,8 +89,8 @@ def load_robot_config(path):
         raise ValueError('Unsupported WIT baud rate')
     if type(wit['udp_port']) is not int or not 1024 <= wit['udp_port'] <= 65535:
         raise ValueError('Invalid WIT UDP port')
-    if wit['udp_port'] in (config['gnss_udp_port'], heading['udp_port']):
-        raise ValueError('WIT, heading and position need separate UDP ports')
+    if wit['udp_port'] == config['gnss_udp_port']:
+        raise ValueError('WIT and position need separate UDP ports')
     if (isinstance(wit['timeout_s'], bool) or not isinstance(wit['timeout_s'], (int, float))
             or not math.isfinite(wit['timeout_s']) or not 0 < wit['timeout_s'] <= 2):
         raise ValueError('Invalid WIT timeout')

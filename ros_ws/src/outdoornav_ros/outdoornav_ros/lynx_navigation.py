@@ -95,7 +95,7 @@ class LynxNavigation(Navigation):
         health.update({
             'localization': bool(geo.get('ready')) and now - self.geo_at < timeout
                             and (required != 'fixed' or grade == 'fixed'),
-            'heading': bool(geo.get('heading', {}).get('ready')) if config['heading_source'] in ('dual_antenna','wit_imu') else True,
+            'heading': bool(geo.get('heading', {}).get('ready')) if config['heading_source'] == 'wit_imu' else True,
             'calibration': config['calibrated'] and config['antenna_offset_confirmed']
                            and config['footprint_confirmed'] and config['cloud_frame_confirmed'],
             'motion_enabled': config['motion_enabled'],

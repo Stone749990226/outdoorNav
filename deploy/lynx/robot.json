@@ -25,15 +25,6 @@
     "enabled": false
   },
   "heading_source": "wit_imu",
-  "dual_heading": {
-    "port": "/dev/rtk",
-    "baud": 115200,
-    "udp_port": 18766,
-    "timeout_s": 1.5,
-    "baseline_to_body_yaw_rad": null,
-    "mounting_confirmed": false,
-    "quality_confirmed": false
-  },
   "localization_mode": "rtk_imu",
   "feedback_confirmed": false,
   "wit_imu": {

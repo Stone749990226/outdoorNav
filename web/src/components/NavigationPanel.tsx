@@ -125,21 +125,6 @@ export function NavigationPanel({
           {!status.feedback?.confirmed && " · 尚未现场验收"}
         </small>
       )}
-      {status?.mode === "lynx" && status.heading?.source === "dual_antenna" && (
-        <small data-testid="heading-status">
-          {status.heading.heading_fresh &&
-          status.heading.true_heading_deg != null
-            ? `双天线真航向 ${status.heading.true_heading_deg.toFixed(1)}°`
-            : "双天线航向无效或已过期"}
-          {status.heading.body_yaw_enu_rad != null &&
-          status.heading.heading_fresh
-            ? ` · 车体 ENU 角 ${((status.heading.body_yaw_enu_rad * 180) / Math.PI).toFixed(1)}°（东为0°，逆时针）`
-            : status.heading.mounting_confirmed
-              ? ""
-              : " · 车体安装角尚未确认"}
-          {!status.heading.quality_confirmed && " · 航向精度待验证"}
-        </small>
-      )}
       {status?.mode === "lynx" && (
         <small>
           {status.gnss?.fixed

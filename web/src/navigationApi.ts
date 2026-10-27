@@ -37,7 +37,7 @@ export type NavigationStatus = {
     speed_accuracy_mps?: number | null;
   } | null;
   heading?: {
-    source: "configured" | "dual_antenna" | "wit_imu";
+    source: "configured" | "wit_imu";
     ready: boolean;
     raw_yaw_deg?: number | null;
     angles_fresh?: boolean;

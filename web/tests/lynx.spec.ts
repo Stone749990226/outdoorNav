@@ -39,12 +39,15 @@ test("Lynx position remains visible before readiness; confirmed place uses share
         localization: ready ? "ok" : "waiting_for_rtk",
         health: { localization: ready },
         heading: {
-          source: "dual_antenna",
+          source: "wit_imu",
           ready,
+          angles_fresh: ready,
+          raw_yaw_deg: ready ? 0 : null,
           heading_fresh: ready,
-          true_heading_deg: ready ? 90 : null,
           body_yaw_enu_rad: ready ? 0 : null,
+          nine_axis_verified: true,
           mounting_confirmed: ready,
+          reference_confirmed: ready,
           quality_confirmed: ready,
         },
         gnss: {
@@ -98,8 +101,8 @@ test("Lynx position remains visible before readiness; confirmed place uses share
   await expect(
     page.getByRole("button", { name: "执行导航", exact: true }),
   ).toBeDisabled();
-  await expect(page.getByTestId("heading-status")).toContainText(
-    "航向无效或已过期",
+  await expect(page.getByTestId("wit-heading-status")).toContainText(
+    "角度无效或已过期",
   );
   await page.getByLabel("地图目的地").selectOption("J");
   await page.getByTestId("plan-ab").click();
@@ -107,10 +110,10 @@ test("Lynx position remains visible before readiness; confirmed place uses share
   await expect(
     page.getByRole("button", { name: "执行导航", exact: true }),
   ).toBeEnabled();
-  await expect(page.getByTestId("heading-status")).toContainText(
-    "真航向 90.0°",
+  await expect(page.getByTestId("wit-heading-status")).toContainText(
+    "新 IMU Z 角 0.0°",
   );
-  await expect(page.getByTestId("heading-status")).toContainText(
+  await expect(page.getByTestId("wit-heading-status")).toContainText(
     "车体 ENU 角 0.0°",
   );
   await page.getByRole("button", { name: "执行导航", exact: true }).click();

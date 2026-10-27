@@ -23,7 +23,6 @@ from outdoornav.diagnostics import StaticFrames, json_safe
 
 from outdoornav.bundle import load_bundle
 from outdoornav.coordinates import enu
-from outdoornav.dual_rtk import DualRtkDecoder
 from outdoornav.gnss import FixDecoder
 from outdoornav.localization import GeoAlignment, wrap
 from outdoornav.rtk_imu import RtkImuFeedback
@@ -50,20 +49,9 @@ class LynxLocalizer(Node):
         self.wit_decoder = None
         self.last_direct_publication = -math.inf
         self.decoder = FixDecoder(self.config)
-        self.heading_decoder = None
         self.heading_socket = None
         self.heading_packets = self.heading_bytes = 0
         self.heading_rx_at = -math.inf
-        self.heading_applied_at = None
-        if self.config['heading_source'] == 'dual_antenna':
-            heading = self.config['dual_heading']
-            self.heading_decoder = DualRtkDecoder(
-                timeout_s=heading['timeout_s'],
-                baseline_to_body_yaw_rad=(heading['baseline_to_body_yaw_rad']
-                                         if heading['mounting_confirmed'] else None))
-            self.heading_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.heading_socket.bind(('127.0.0.1', heading['udp_port']))
-            self.heading_socket.setblocking(False)
         if self.config['heading_source'] == 'wit_imu':
             self.wit_decoder = WitImuDecoder(self.config['wit_imu'])
             self.heading_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -197,31 +185,15 @@ class LynxLocalizer(Node):
                 raw = self.heading_socket.recv(65535)
             except BlockingIOError:
                 break
-            if self.wit_decoder is not None:
-                try:
-                    now = time.monotonic()
-                    if self.wit_decoder.packet(raw, now):
-                        self.heading_packets += 1
-                        self.heading_bytes += len(raw)
-                        self.heading_rx_at = self.wit_decoder.packet_at
-                        self.direct.update_imu(self.wit_decoder.snapshot(now), now)
-                except (ValueError, TypeError, KeyError, UnicodeError):
-                    self.direct.fault = 'invalid_wit_packet; inspect collector and restart'
-                continue
-            if len(raw) < 8:
-                continue
-            received = struct.unpack('!d', raw[:8])[0]
-            if not 0 <= time.monotonic()-received < self.config['dual_heading']['timeout_s']:
-                continue
-            self.heading_packets += 1
-            self.heading_bytes += len(raw)-8
-            self.heading_rx_at = received
-            self.heading_decoder.feed(raw[8:], received)
-            snapshot = self.heading_decoder.snapshot(time.monotonic())
-            # HDT/GGA packets must not extend the freshness of an old THS.
-            if self.heading_decoder.heading_at != self.heading_applied_at:
-                self.alignment.update_heading(snapshot, self.heading_decoder.heading_at)
-                self.heading_applied_at = self.heading_decoder.heading_at
+            try:
+                now = time.monotonic()
+                if self.wit_decoder.packet(raw, now):
+                    self.heading_packets += 1
+                    self.heading_bytes += len(raw)
+                    self.heading_rx_at = self.wit_decoder.packet_at
+                    self.direct.update_imu(self.wit_decoder.snapshot(now), now)
+            except (ValueError, TypeError, KeyError, UnicodeError):
+                self.direct.fault = 'invalid_wit_packet; inspect collector and restart'
 
     def heading_status(self, now):
         if self.wit_decoder is not None:
@@ -235,29 +207,9 @@ class LynxLocalizer(Node):
                     'age_s':now-self.wit_decoder.angle_at,
                     'receive_age_s':now-self.heading_rx_at,
                     'packets':self.heading_packets,'bytes':self.heading_bytes}
-        if self.heading_decoder is None:
-            return {'source': 'configured', 'ready': True,
-                    'body_yaw_enu_rad': self.config['initial_heading_rad'],
-                    'time_basis': 'configuration, not a measured absolute heading'}
-        value = self.heading_decoder.snapshot(now)
-        heading = value['heading'] or {}
-        age = now-self.heading_decoder.heading_at
-        rx_age = now-self.heading_rx_at
-        return {'source': 'dual_antenna', 'ready': self.alignment.heading_ready(now),
-                'true_heading_deg': heading.get('true_heading_deg'),
-                'heading_fresh': value['heading_fresh'],
-                'status': heading.get('status'),
-                'body_yaw_enu_rad': value['body_yaw_enu_rad'] if value['heading_fresh'] else None,
-                'mounting_confirmed': self.config['dual_heading']['mounting_confirmed'],
-                'quality_confirmed': self.config['dual_heading']['quality_confirmed'],
-                'age_s': age if math.isfinite(age) else None,
-                'receive_age_s': rx_age if math.isfinite(rx_age) else None,
-                'odom_receive_skew_s': self.alignment.heading_skew_s,
-                'time_basis': 'host_monotonic_receive; THS has no acquisition timestamp',
-                'packets': self.heading_packets, 'bytes': self.heading_bytes,
-                'counts': value['counts'], 'bad_checksums': value['bad_checksums'],
-                'malformed': value['malformed'], 'fault': value['fault'],
-                'unverified_hdt': value['unverified_hdt']}
+        return {'source': 'configured', 'ready': True,
+                'body_yaw_enu_rad': self.config['initial_heading_rad'],
+                'time_basis': 'configuration, not a measured absolute heading'}
 
     def receive(self):
         for _ in range(100):
@@ -376,13 +328,9 @@ class LynxLocalizer(Node):
         a, now = self.alignment, time.monotonic()
         pose = a.pose()
         heading = self.heading_status(now)
-        if (pose is None and a.fix and a.fix["valid"] and
-                (self.config["heading_source"] == "configured" or
-                 (heading.get("heading_fresh") and heading.get("body_yaw_enu_rad") is not None))):
+        if (pose is None and a.fix and a.fix["valid"]):
             x, y = enu(a.fix["latitude"], a.fix["longitude"], a.anchor)
-            yaw = (heading.get("body_yaw_enu_rad") if self.config["heading_source"] == "dual_antenna"
-                   else self.config["initial_heading_rad"])
-            pose = {"x": x, "y": y, "yaw": yaw}
+            pose = {"x": x, "y": y, "yaw": self.config["initial_heading_rad"]}
         age = now - a.fix_at
         payload = {
             "ready": a.ready(now) and self.lio_ready(now) and not self.ownership_conflict,

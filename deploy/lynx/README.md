@@ -13,7 +13,7 @@ bash deploy/lynx/start.sh --diagnostic
 
 打开 **http://10.29.1.4:8765/** 查看真实传感器状态和全部未就绪原因。诊断模式拒绝导航任务，
 最终速度只发布到 `/outdoor/diagnostic_cmd_vel`，不向真实 `/cmd_vel` 发布，包括退出时的零速。
-该模式默认 `LYNX_GNSS_MODE=observe`、`LYNX_HEADING_MODE=observe`：不启动位置或航向串口采集者，不占用现有 GNSS 端口；
+该模式默认 `LYNX_GNSS_MODE=observe`、`LYNX_IMU_MODE=observe`：不启动位置或 IMU 串口采集者，不占用现有 GNSS 端口；
 网页没有定位数据时先检查采集链路，不要降低 RTK 门槛。正常生产默认由服务管理唯一采集进程。
 
 `Ctrl+C` 结束本次诊断并清理本服务子进程。不会停止厂商底盘程序或当前正式 Robonix 部署。
@@ -46,8 +46,8 @@ rbnx boot -f robonix_manifest.outdoor.yaml
 
 ## 可选旧路径：雷达＋IMU 连续里程计（非当前默认）
 
-当前默认已经改为原 u-blox RTK＋新十轴 WIT IMU，见下文“RTK＋新 IMU 直接运动反馈”；双天线及 LIO 仅作为保留的旧路径。
-室外测试入口、实测状态和生产接入边界见 [双天线 RTK](../../docs/dual-rtk.md)。以下 LIO 仍为保留候选。
+当前默认已经改为原 u-blox RTK＋新十轴 WIT IMU，见下文“RTK＋新 IMU 直接运动反馈”；LIO 仅作为保留的候选路径。
+以下 LIO 仍为保留候选。
 
 新增 FAST-LIO2 ROS 2 后端，使用固定版本 `Ericsii/FAST_LIO_ROS2@2fffc570`。
 链路为 Airy 原始点云／IMU → 输入适配 → FAST-LIO → 机身原点里程计 → 现有 GNSS 地图对齐。
@@ -175,21 +175,6 @@ curl -s -X POST -H 'Content-Type: application/json' -d '{"active":true}' http://
 网页端口 8766。真实模式仍用 `start_production.sh`（端口 8765、真实 `/cmd_vel`＋`cmd_vel_bridge.py` 转发到 `/NAV_CMD`）。
 演示配置 `deploy/lynx/robot.fieldtest.json`（真实）与 `robot.mock.json`（模拟）记录了三米档、安装矩阵、以及**未实测项**（天线杆臂、磁偏角、航向绝对精度）；
 `scan_range_min_m=1.2` 用于剔除前雷达 1.2 m 内的自车腿部回波，否则 DWB 所有轨迹都判碰撞。
-
-## 保留旧路径：RTK＋双天线分别接入
-
-`localization_mode=external_odom`、`heading_source=dual_antenna` 是保留的旧路径，不是当前默认。位置沿用 `/home/nvidia/ntrip` 的唯一采集者、千寻差分和 UBX NAV-PVT 解码；不改写该目录配置。新 `heading_stream.py` 只读 `/dev/rtk`，不注入差分、不使用它的 GGA 替代原 RTK 位置。两路通过各自的本机 UDP 端口输入定位节点（位置 18765、航向 18766）。
-
-`dual_heading.baseline_to_body_yaw_rad` 为实测基线至车头逆时针角，未知必须为 null；`mounting_confirmed` 与 `quality_confirmed` 默认 false。THS A 才提供有效真北航向；HDT 仅显示未验证值，THS V 或超时立即撤销有效性。GGA 定位固定解不能替代双天线定向质量验证。
-
-航向换算：`body_yaw = wrap(pi/2 - radians(true_heading_deg) + mounting_offset)`。
-位置及航向各自判断新鲜度；当前按主机单调接收时间与连续里程计匹配（偏差最多 0.2 秒），THS 本身没有采样时间戳，不能宣称已完成硬件时间同步。
-
-真实室内接口检查可在独立 ROS 域下使用 `LYNX_GNSS_MODE=managed LYNX_HEADING_MODE=managed bash deploy/lynx/start.sh --diagnostic`；执行前必须确认两台接收机没有其他采集者。默认诊断仍为 observe，不抢串口。生产由同一启动脚本管理两个采集子进程，任何采集者退出会触发整组清理。
-
-`/outdoor/heading` 和 `/outdoor/localization` 提供来源、有效状态、新鲜度与安装确认信息；HTTP `/api/status` 及网页同样显示 `position_source` 和 `heading`。输入无效时不伪造位置或朝向，不给导航放行。未确认连续里程计时仍显示 `odometry_source_unconfigured`，本次接入不自动启用 `/ODOM`、LIO 或 GNSS-only 里程计。
-
-隔离测试：构建并加载 ROS 包后运行 `python3 tests/heading_ros_smoke.py`（域 91），或 `python3 tests/lynx_ros_smoke.py --dual-heading`（域 87，完整 HTTP 诊断栈）。两者均使用合成数据，禁止修改成实机域；均断言没有真实速度发布者。
 
 ## 网页和客户端
 

@@ -141,7 +141,7 @@ class StaticFrames:
 
 def readiness_reasons(health, geo):
     messages = {
-        'heading': '双天线航向无效、过期或尚未确认',
+        'heading': '航向无效、过期或尚未确认',
         'lidar': '雷达无有效新数据', 'global_map': '全局代价地图未就绪',
         'local_map': '局部代价地图未就绪', 'localization': '无合格且稳定的 RTK 定位',
         'calibration': '坐标、天线或机器人外形尚未确认', 'motion_enabled': '运动开关关闭',
@@ -184,13 +184,6 @@ def readiness_reasons(health, geo):
         reasons.append({'code': 'lio_not_ready', 'message': '雷达／IMU 里程计未就绪：' +
                         (geo['lio'].get('fault') or '等待同步输入及稳定输出')})
     heading = geo.get('heading') or {}
-    if heading.get('source') == 'dual_antenna':
-        if not heading.get('heading_fresh'):
-            reasons.append({'code': 'heading_signal', 'message': '双天线未收到有效 THS 航向或已过期'})
-        if not heading.get('mounting_confirmed'):
-            reasons.append({'code': 'heading_mounting', 'message': '双天线基线到车头的安装角尚未确认'})
-        if not heading.get('quality_confirmed'):
-            reasons.append({'code': 'heading_quality', 'message': '双天线基线解状态及航向精度尚未验证'})
     if heading.get('source') == 'wit_imu':
         if not heading.get('nine_axis_verified'):
             reasons.append({'code':'imu_mode','message':'新 IMU 未确认九轴磁航向模式'})

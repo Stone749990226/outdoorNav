@@ -32,7 +32,7 @@ from std_msgs.msg import Header
 from tf2_msgs.msg import TFMessage
 
 from outdoornav.bundle import load_bundle
-from outdoornav.config import DEFAULTS, HEADING_DEFAULTS, WIT_DEFAULTS
+from outdoornav.config import DEFAULTS, WIT_DEFAULTS
 from outdoornav.coordinates import local_radii
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -43,7 +43,7 @@ RUN.mkdir()
 API='http://127.0.0.1:19865'
 CONTROL='http://127.0.0.1:19866'
 COMMAND='/isolated_task_flow/cmd_vel'
-for port in (19865,19866,29865,29866,29867):
+for port in (19865,19866,29865,29867):
     kind=socket.SOCK_DGRAM if port>=29000 else socket.SOCK_STREAM
     with socket.socket(socket.AF_INET,kind) as probe:
         if kind==socket.SOCK_STREAM:probe.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
@@ -62,9 +62,7 @@ config={**real_config,**{key:True for key in ('calibrated','antenna_offset_confi
 config.update({key:DEFAULTS[key] for key in ('gnss_fixed_hacc_m','gnss_float_hacc_m','fixed_arrival_m','float_arrival_m')})
 config.update(localization_mode='external_odom',motion_enabled=True,odom_topic='/isolated_task_flow/native_odom',
               cloud_topic='/isolated_task_flow/cloud',gnss_udp_port=29865,http_port=19865,
-              antenna_xy_m=[0.0,0.0],map_offset_xy_m=[0.0,0.0],heading_source='dual_antenna')
-config['dual_heading']={**HEADING_DEFAULTS,'udp_port':29866,'mounting_confirmed':True,
-                        'quality_confirmed':True,'baseline_to_body_yaw_rad':0.0}
+              antenna_xy_m=[0.0,0.0],map_offset_xy_m=[0.0,0.0],heading_source='configured')
 if args.rtk_imu:
     config.update(localization_mode='rtk_imu',heading_source='wit_imu',odom_topic='',
                   odometry_confirmed=False,feedback_confirmed=True)
@@ -105,7 +103,6 @@ class VirtualBase(Node):
         self.lock=threading.RLock()
         self.x,self.y,self.yaw=a['x'],a['y'],initial_yaw
         self.v=self.w=0.0
-        self.heading_valid=True
         self.heading_stream=True
         self.command_at=-math.inf
         self.last_tick=time.monotonic()
@@ -171,8 +168,6 @@ class VirtualBase(Node):
             for raw in (nmea('GNGGA,120000,3000.0,N,12000.0,E,4,20,0.8,0,M,0,M,1,0001'),b'\xb5\x62'+raw+bytes([aa,bb])):
                 if not args.rtk_imu or self.epoch%200==0:
                     self.udp.sendto(struct.pack('!d',now)+raw,('127.0.0.1',29865))
-            heading=(90-math.degrees(self.yaw))%360
-            raw=nmea(f'GNTHS,{heading:.8f},A') if self.heading_valid else nmea('GNTHS,,V')
             if args.rtk_imu:
                 if self.epoch%100==0:
                     def wit_frame(kind,values):
@@ -185,10 +180,8 @@ class VirtualBase(Node):
                     packet={'schema_version':1,'source':'wit_imu','generation':'isolated-virtual-wit',
                             'axis6_register':0,'received':now,'raw_hex':imu.hex()}
                     self.udp.sendto(json.dumps(packet).encode(),('127.0.0.1',29867))
-            elif self.heading_stream:
-                self.udp.sendto(struct.pack('!d',now)+raw,('127.0.0.1',29866))
             self.trace.append({'time':now,'x':self.x,'y':self.y,'yaw':self.yaw,'v':self.v,'w':self.w,
-                               'heading_valid':self.heading_valid,'heading_stream':self.heading_stream})
+                               'heading_stream':self.heading_stream})
 
     def snapshot(self):
         with self.lock:
@@ -222,10 +215,9 @@ class Control(BaseHTTPRequestHandler):
         self.reply(virtual.snapshot())
     def do_POST(self):
         data=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-        if self.path=='/heading' and type(data.get('valid')) is bool:
+        if self.path=='/heading' and type(data.get('stream')) is bool:
             with virtual.lock:
-                virtual.heading_valid=data['valid']
-                if type(data.get('stream')) is bool:virtual.heading_stream=data['stream']
+                virtual.heading_stream=data['stream']
             self.reply({'ok':True})
         elif self.path=='/event':
             virtual.events.append(data);self.reply({'ok':True})

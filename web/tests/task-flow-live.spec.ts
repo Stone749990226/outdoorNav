@@ -139,54 +139,52 @@ test("isolated real frontend and Nav2: arrive, cancel, replace, fail and recover
     new_state: newDone.state,
   });
 
-  const interrupted = await execute(6.5);
-  await waitState(interrupted.value.task_id, "navigating");
-  await request.post(control + "/heading", {
-    data: { valid: true, stream: false },
-  });
-  expect(
-    (await (await request.get(control + "/scope")).json()).heading_stream,
-  ).toBe(false);
-  const failed = await waitState(interrupted.value.task_id, "failed");
-  expect(failed.reason).toMatch(/Localization|unavailable/);
-  const lostStatus = await status();
-  expect(lostStatus.ready).toBe(false);
-  expect(lostStatus.heading.heading_fresh).toBe(false);
   if (scope.localization_mode === "rtk_imu") {
+    const interrupted = await execute(6.5);
+    await waitState(interrupted.value.task_id, "navigating");
+    await request.post(control + "/heading", {
+      data: { valid: true, stream: false },
+    });
+    expect(
+      (await (await request.get(control + "/scope")).json()).heading_stream,
+    ).toBe(false);
+    const failed = await waitState(interrupted.value.task_id, "failed");
+    expect(failed.reason).toMatch(/Localization|unavailable/);
+    const lostStatus = await status();
+    expect(lostStatus.ready).toBe(false);
+    expect(lostStatus.heading.heading_fresh).toBe(false);
     expect(scope.external_odometry_published).toBe(false);
     expect(lostStatus.heading.age_s).toBeGreaterThanOrEqual(0.5);
     expect(lostStatus.heading.gyro_fresh).toBe(true);
-  } else {
-    expect(lostStatus.heading.receive_age_s).toBeGreaterThanOrEqual(1.5);
-  }
-  const denied = await request.post(base + "/api/tasks", {
-    data: { ...interrupted.payload, request_id: "f".repeat(32) },
-  });
-  expect(denied.status()).toBe(503);
-  const failureStop = await (await request.get(control + "/scope")).json();
-  expect(Math.abs(failureStop.v)).toBeLessThanOrEqual(0.01);
-  expect(Math.abs(failureStop.w)).toBeLessThanOrEqual(0.01);
-  await record("heading_loss", {
-    task_id: failed.task_id,
-    final_state: failed.state,
-    reason: failed.reason,
-    heading_stream_dropped: true,
-    heading_fresh_after_loss: lostStatus.heading.heading_fresh,
-    new_request_status: denied.status(),
-  });
+    const denied = await request.post(base + "/api/tasks", {
+      data: { ...interrupted.payload, request_id: "f".repeat(32) },
+    });
+    expect(denied.status()).toBe(503);
+    const failureStop = await (await request.get(control + "/scope")).json();
+    expect(Math.abs(failureStop.v)).toBeLessThanOrEqual(0.01);
+    expect(Math.abs(failureStop.w)).toBeLessThanOrEqual(0.01);
+    await record("heading_loss", {
+      task_id: failed.task_id,
+      final_state: failed.state,
+      reason: failed.reason,
+      heading_stream_dropped: true,
+      heading_fresh_after_loss: lostStatus.heading.heading_fresh,
+      new_request_status: denied.status(),
+    });
 
-  await request.post(control + "/heading", {
-    data: { valid: true, stream: true },
-  });
-  await expect
-    .poll(async () => (await status()).ready, { timeout: 12000 })
-    .toBe(true);
-  const recovery = await execute(5.0);
-  const recovered = await waitState(recovery.value.task_id, "succeeded");
-  await record("recovery", {
-    task_id: recovered.task_id,
-    final_state: recovered.state,
-  });
+    await request.post(control + "/heading", {
+      data: { valid: true, stream: true },
+    });
+    await expect
+      .poll(async () => (await status()).ready, { timeout: 12000 })
+      .toBe(true);
+    const recovery = await execute(5.0);
+    const recovered = await waitState(recovery.value.task_id, "succeeded");
+    await record("recovery", {
+      task_id: recovered.task_id,
+      final_state: recovered.state,
+    });
+  }
   expect(
     (await (await request.get(control + "/scope")).json()).backend_pid,
   ).toBe(scope.backend_pid);
