@@ -139,7 +139,7 @@ def main():
     parser.add_argument('--bundle', required=True)
     parser.add_argument('--port', type=int, default=18765)
     parser.add_argument('--imu-port', type=int, default=18767)
-    parser.add_argument('--speed', type=float, default=0.15)
+    parser.add_argument('--speed', type=float, default=0.4)
     parser.add_argument('--turn', type=float, default=0.4)
     args = parser.parse_args()
     bundle = load_bundle(Path(args.bundle))

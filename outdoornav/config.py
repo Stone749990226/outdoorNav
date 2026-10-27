@@ -16,7 +16,7 @@ DEFAULTS = {
     'fixed_arrival_m': 0.5,
     'float_arrival_m': 1.5,
     'gnss_speed_accuracy_mps': 0.10,
-    'max_speed_mps': 0.15,
+    'max_speed_mps': 0.4,
     'max_angular_speed_rps': 0.4,
     'scan_range_min_m': 0.0,
     'obstacle_layer_enabled': True,
@@ -58,7 +58,7 @@ def load_robot_config(path):
             isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in values
         ):
             raise ValueError(key + ' must contain two finite measurements')
-    if not (0 < config['max_speed_mps'] <= 0.15 and 0 < config['max_angular_speed_rps'] <= 0.4
+    if not (0 < config['max_speed_mps'] <= 0.4 and 0 < config['max_angular_speed_rps'] <= 0.4
             and 0.1 <= config['footprint_radius_m'] <= 2
             and config['cloud_min_height_m'] < config['cloud_max_height_m']
             and config['gnss_fixed_hacc_m'] <= config['gnss_float_hacc_m']

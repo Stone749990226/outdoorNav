@@ -31,7 +31,7 @@ def nodes(context):
     bundle = json.loads(Path(value("bundle")).read_text())
     robot = load_robot_config(value("robot_config"))
     if (
-        not 0 < robot["max_speed_mps"] <= 0.15
+        not 0 < robot["max_speed_mps"] <= 0.4
         or not 0.1 <= robot["footprint_radius_m"] <= 2
     ):
         raise ValueError("Invalid speed limit or measured footprint radius")
