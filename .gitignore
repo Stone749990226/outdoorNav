@@ -26,3 +26,6 @@
 /artifacts/lynx/
 /integrations/robonix_outdoor/rbnx-build/
 **/*.tsbuildinfo
+
+# Field demo runtime output
+/run/

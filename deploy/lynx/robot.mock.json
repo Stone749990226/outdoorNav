@@ -31,7 +31,7 @@
     "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0",
     "baud": 9600,
     "udp_port": 18767,
-    "timeout_s": 0.5,
+    "timeout_s": 2.0,
     "base_from_imu": [
       [
         0.0,
