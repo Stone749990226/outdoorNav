@@ -93,7 +93,7 @@ class MockBase(Node):
         self.create_subscription(Twist, '/mock_base/cmd_vel', self.command, 10)
         self.create_timer(0.05, self.tick)
         self.create_timer(0.2, self.emit)
-        self.create_timer(0.1, self.emit_imu)
+        self.create_timer(0.02, self.emit_imu)
 
     def command(self, message):
         self.v = max(-self.speed_limit, min(self.speed_limit, float(message.linear.x)))

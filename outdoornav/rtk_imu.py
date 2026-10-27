@@ -39,6 +39,7 @@ class RtkImuFeedback:
         self.last_map_rotation = None
         self.output = None
         self.reason = 'waiting_for_rtk_and_imu'
+        self.gap_recoveries = 0
 
     def update_fix(self, fix, received):
         self.fix = dict(fix)
@@ -111,7 +112,14 @@ class RtkImuFeedback:
         else:
             dt = t-self.last_gyro_at
             if dt > self.config['wit_imu']['timeout_s']:
-                self.fault = 'imu_time_gap; inspect input and restart'
+                # Sensor gap: rate continuity is lost, but a permanent fault would
+                # strand the robot until a restart. Drop the integrated reference
+                # and re-anchor from the measured absolute heading on the next
+                # sample; position/Doppler stay untouched.
+                self.initialized = False
+                self.last_gyro_at = None
+                self.last_velocity = None
+                self.gap_recoveries += 1
                 return
             self.yaw = wrap(self.yaw+.5*(self.last_rate+rate)*dt)
         dt = t-self.last_gyro_at
