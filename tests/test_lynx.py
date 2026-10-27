@@ -332,6 +332,8 @@ def test_hardware_policy_downgrade_and_watchdog_output():
     now = time.monotonic()
     node.config = {**DEFAULTS, **{k: True for k in ('calibrated', 'antenna_offset_confirmed',
                     'footprint_confirmed', 'cloud_frame_confirmed', 'motion_enabled', 'odometry_confirmed')}}
+    node.config.update(localization_mode='external_odom',heading_source='configured')
+    node.resolve_topic_name = lambda topic: topic
     node.geo = {'ready': True, 'grade': 'float', 'extrinsics': {'ready': True}}
     node.diagnostic = False
     node.guard, node.guard_at = {"output_topic": "/cmd_vel", "conflict": False}, now
@@ -393,9 +395,11 @@ def test_native_odometry_keeps_source_time_measures_speed_and_rejects_replay():
     from outdoornav_ros.lynx_localizer import LynxLocalizer
     node = object.__new__(LynxLocalizer)
     node.config = {"sensor_timeout_s": 1.0}
+    node.direct = None
     node.alignment = GeoAlignment({'latitude': 30, 'longitude': 120}, {
         'calibrated': False, 'initial_heading_rad': 0, 'antenna_xy_m': [0, 0],
         'map_offset_xy_m': [0, 0]})
+    node.estimator = node.alignment
     node.get_clock = lambda: SimpleNamespace(now=lambda: SimpleNamespace(nanoseconds=10_200_000_000))
     from collections import deque
     node.sent_transforms = deque(maxlen=200)

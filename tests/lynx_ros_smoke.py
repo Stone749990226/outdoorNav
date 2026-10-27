@@ -53,7 +53,7 @@ def main(dual_heading=False):
     config = json.loads((ROOT / 'deploy/lynx/robot.json').read_text())
     config.update({key: True for key in ('calibrated', 'antenna_offset_confirmed',
                   'footprint_confirmed', 'cloud_frame_confirmed', 'odometry_confirmed')})
-    config.update(heading_source='dual_antenna' if dual_heading else 'configured', motion_enabled=False, odom_topic='/test/native_odom', cloud_topic='/test/cloud',
+    config.update(localization_mode='external_odom', heading_source='dual_antenna' if dual_heading else 'configured', motion_enabled=False, odom_topic='/test/native_odom', cloud_topic='/test/cloud',
                   gnss_udp_port=28765, http_port=18765)
     if dual_heading:
         config['dual_heading'].update(udp_port=28766, mounting_confirmed=True,

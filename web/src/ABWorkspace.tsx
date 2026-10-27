@@ -508,11 +508,24 @@ export function ABWorkspace() {
           busy={navigation.busy}
           canExecute={
             !!b &&
-            !!result?.plan &&
-            result.plan.length * scale > 0 &&
             (!placeId ||
               !hardware ||
               places.some((p) => p.id === placeId && p.enabled))
+          }
+          blockedReason={
+            !navigation.status
+              ? "导航服务未连接"
+              : !compatible(navigation.status)
+                ? "场景或路线版本不一致，请刷新页面"
+                : !navigation.status.ready
+                  ? "定位、传感器或导航尚未就绪"
+                  : !b
+                    ? "尚未选择终点：点“设置终点”后在地图上选择"
+                    : placeId &&
+                        hardware &&
+                        !places.some((p) => p.id === placeId && p.enabled)
+                      ? "所选地图目的地尚未现场确认"
+                      : "导航繁忙"
           }
           onExecute={() => b && void navigation.execute(b, blocked, placeId)}
           onCancel={() => void navigation.cancel()}

@@ -61,6 +61,16 @@ test("isolated real frontend and Nav2: arrive, cancel, replace, fail and recover
   };
 
   await page.goto(base);
+  if (scope.localization_mode === "rtk_imu") {
+    expect(scope.external_odometry_published).toBe(false);
+    await expect(page.getByTestId("feedback-source-status")).toContainText(
+      "不使用本体里程计",
+    );
+    await expect(page.getByTestId("wit-heading-status")).toContainText(
+      "新 IMU Z 角",
+    );
+    expect((await status()).velocity_source).toBe("ublox_doppler_and_wit_gyro");
+  }
   await expect(page.getByTestId("navigation-status")).toContainText(
     "山猫室外导航就绪",
   );
@@ -142,7 +152,13 @@ test("isolated real frontend and Nav2: arrive, cancel, replace, fail and recover
   const lostStatus = await status();
   expect(lostStatus.ready).toBe(false);
   expect(lostStatus.heading.heading_fresh).toBe(false);
-  expect(lostStatus.heading.receive_age_s).toBeGreaterThanOrEqual(1.5);
+  if (scope.localization_mode === "rtk_imu") {
+    expect(scope.external_odometry_published).toBe(false);
+    expect(lostStatus.heading.age_s).toBeGreaterThanOrEqual(0.5);
+    expect(lostStatus.heading.gyro_fresh).toBe(true);
+  } else {
+    expect(lostStatus.heading.receive_age_s).toBeGreaterThanOrEqual(1.5);
+  }
   const denied = await request.post(base + "/api/tasks", {
     data: { ...interrupted.payload, request_id: "f".repeat(32) },
   });

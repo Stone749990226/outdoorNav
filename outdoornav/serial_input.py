@@ -8,7 +8,7 @@ import termios
 
 
 class SerialInput:
-    def __init__(self, port, baud, *, forbidden=()):
+    def __init__(self, port, baud, *, forbidden=(), read_requests=False):
         self.port = Path(port).resolve(strict=True)
         if self.port in [Path(p).resolve() for p in forbidden]:
             raise ValueError('Heading input must not open the position receiver')
@@ -16,7 +16,9 @@ class SerialInput:
             raise ValueError('Serial input must be a character device')
         self.fd = None
         self.attrs = None
-        fd = os.open(self.port, os.O_RDONLY | os.O_NOCTTY | os.O_NONBLOCK)
+        self.read_requests = read_requests
+        mode = os.O_RDWR if read_requests else os.O_RDONLY
+        fd = os.open(self.port, mode | os.O_NOCTTY | os.O_NONBLOCK)
         self.fd = fd
         try:
             fcntl.ioctl(fd, termios.TIOCEXCL)
@@ -46,6 +48,13 @@ class SerialInput:
         except Exception:
             self.close()
             raise
+
+    def query_imu_algorithm(self):
+        if not self.read_requests:
+            raise RuntimeError('This reader cannot send register queries')
+        # READADDR only. Never unlock, set AXIS6, calibrate or save settings.
+        if os.write(self.fd, bytes.fromhex('ff aa 27 24 00')) != 5:
+            raise RuntimeError('Incomplete IMU mode read request')
 
     def read(self, timeout=0.1):
         if select.select([self.fd], [], [], timeout)[0]:

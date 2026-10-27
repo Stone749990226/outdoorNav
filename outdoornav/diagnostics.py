@@ -152,6 +152,10 @@ def readiness_reasons(health, geo):
         'command_guard': '命令看门狗未就绪或输出话题不一致',
         'production_mode': '诊断模式：底盘输出已隔离',
     }
+    if geo.get('localization_mode') == 'rtk_imu':
+        messages['odometry'] = 'RTK 多普勒／IMU 运动反馈未就绪或未确认'
+        messages['heading'] = '新 IMU 航向无效、过期或尚未确认'
+        messages['localization'] = 'RTK 位置、速度与新 IMU 航向尚未稳定就绪'
     reasons = [{'code': key, 'message': messages.get(key, key + ' 未就绪')}
                for key, ready in health.items() if not ready]
     if geo.get('tf_conflicts', {}).get('dynamic'):
@@ -160,6 +164,12 @@ def readiness_reasons(health, geo):
         code = geo['fault'].split(';', 1)[0]
         message = {
             'odometry_source_unconfigured': '连续里程计来源尚未配置',
+            'waiting_for_rtk_and_imu': '等待原 RTK 与新 IMU 的有效位置、速度和航向',
+            'gnss_quality_unusable': 'RTK 解类型、位置精度或改正时效不合格',
+            'gnss_doppler_unusable': 'RTK 多普勒速度缺失或速度精度不合格',
+            'imu_time_gap': '新 IMU 角速度数据中断，请检查后重启',
+            'imu_heading_jump': '新 IMU 航向异常跳变，请检查磁干扰',
+            'imu_source_restarted': '新 IMU 采集进程已重启，请检查后重启定位',
             'invalid_odometry': '里程计数据无效',
             'odometry_stamp_or_quaternion_invalid': '里程计时间或姿态数据无效',
             'odometry_reset_or_gap': '里程计中断或重置，请检查后重启',
@@ -181,4 +191,16 @@ def readiness_reasons(health, geo):
             reasons.append({'code': 'heading_mounting', 'message': '双天线基线到车头的安装角尚未确认'})
         if not heading.get('quality_confirmed'):
             reasons.append({'code': 'heading_quality', 'message': '双天线基线解状态及航向精度尚未验证'})
+    if heading.get('source') == 'wit_imu':
+        if not heading.get('nine_axis_verified'):
+            reasons.append({'code':'imu_mode','message':'新 IMU 未确认九轴磁航向模式'})
+        if not heading.get('angles_fresh') or not heading.get('gyro_fresh'):
+            reasons.append({'code':'imu_input','message':'新 IMU 姿态角或角速度未收到／已过期'})
+        for key,code,message in (
+                ('mounting_confirmed','imu_mounting','新 IMU 到车体的安装外参未确认'),
+                ('reference_confirmed','imu_north_reference','新 IMU 磁北到真北参考未确认'),
+                ('quality_confirmed','imu_quality','新 IMU 磁校准与航向精度未确认')):
+            if not heading.get(key):reasons.append({'code':code,'message':message})
+    if geo.get('feedback') is not None and not geo['feedback'].get('confirmed'):
+        reasons.append({'code':'feedback_confirmation','message':'RTK 多普勒／IMU 运动反馈尚未实测确认'})
     return reasons

@@ -16,6 +16,7 @@ export function NavigationPanel({
   error,
   busy,
   canExecute,
+  blockedReason,
   onExecute,
   onCancel,
 }: {
@@ -23,6 +24,7 @@ export function NavigationPanel({
   error: string;
   busy: boolean;
   canExecute: boolean;
+  blockedReason: string;
   onExecute: () => void;
   onCancel: () => void;
 }) {
@@ -50,6 +52,7 @@ export function NavigationPanel({
         <button
           onClick={onExecute}
           disabled={busy || !canExecute || !match || !status?.ready}
+          title={busy || !canExecute || !match || !status?.ready ? blockedReason : undefined}
         >
           <Send size={14} />
           {status?.task && !terminal(status.task) ? "替换导航目标" : "执行导航"}
@@ -65,6 +68,9 @@ export function NavigationPanel({
       <small role="status" data-testid="navigation-status">
         {error || text}
       </small>
+      {(busy || !canExecute || !match || !status?.ready) && (
+        <small data-testid="execute-blocked">执行不可用：{blockedReason}</small>
+      )}
       {match &&
         status?.not_ready_reasons &&
         status.not_ready_reasons.length > 0 && (
@@ -97,6 +103,26 @@ export function NavigationPanel({
           status.gnss.longitude != null
             ? `RTK 天线经纬度 ${status.gnss.latitude.toFixed(7)}, ${status.gnss.longitude.toFixed(7)}`
             : "RTK 位置无效，不使用当前经纬度"}
+        </small>
+      )}
+      {status?.mode === "lynx" && status.heading?.source === "wit_imu" && (
+        <small data-testid="wit-heading-status">
+          {status.heading.angles_fresh && status.heading.raw_yaw_deg != null
+            ? `新 IMU Z 角 ${status.heading.raw_yaw_deg.toFixed(1)}°（模块磁参考）`
+            : "新 IMU 角度无效或已过期"}
+          {!status.heading.nine_axis_verified && " · 九轴模式未确认"}
+          {!status.heading.mounting_confirmed && " · 安装外参待确认"}
+          {!status.heading.reference_confirmed && " · 真北参考待确认"}
+          {!status.heading.quality_confirmed && " · 航向精度待验证"}
+          {status.heading.heading_fresh &&
+            status.heading.body_yaw_enu_rad != null &&
+            ` · 车体 ENU 角 ${((status.heading.body_yaw_enu_rad * 180) / Math.PI).toFixed(1)}°`}
+        </small>
+      )}
+      {status?.mode === "lynx" && status.localization_mode === "rtk_imu" && (
+        <small data-testid="feedback-source-status">
+          运动反馈：RTK 多普勒＋IMU 角速度（不使用本体里程计）
+          {!status.feedback?.confirmed && " · 尚未现场验收"}
         </small>
       )}
       {status?.mode === "lynx" && status.heading?.source === "dual_antenna" && (

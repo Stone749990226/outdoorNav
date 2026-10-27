@@ -44,9 +44,9 @@ rbnx boot -f robonix_manifest.outdoor.yaml
 构建入口 `bash deploy/lynx/build.sh` 构建 ROS 包、网页和 MCP 类型；运行入口由 Robonix 包自动调用。
 单独运行 `bash deploy/lynx/start.sh` 只供诊断，Service 未激活时不接受运动。
 
-## 雷达＋IMU 连续里程计
+## 可选旧路径：雷达＋IMU 连续里程计（非当前默认）
 
-位置保留原 u-blox RTK，绝对航向由新双天线接收机提供；两路已接入同一定位／诊断接口。
+当前默认已经改为原 u-blox RTK＋新十轴 WIT IMU，见下文“RTK＋新 IMU 直接运动反馈”；双天线及 LIO 仅作为保留的旧路径。
 室外测试入口、实测状态和生产接入边界见 [双天线 RTK](../../docs/dual-rtk.md)。以下 LIO 仍为保留候选。
 
 新增 FAST-LIO2 ROS 2 后端，使用固定版本 `Ericsii/FAST_LIO_ROS2@2fffc570`。
@@ -122,22 +122,63 @@ source /opt/ros/humble/setup.bash
 `deploy/lynx/robot.json` 只保存部署值，通用默认值集中在 `outdoornav/config.py`：
 
 - **不使用 `/ODOM`。**`odom_topic` 默认留空，诊断服务不订阅该话题，配置加载也拒绝将它设为定位源。
-- 可靠连续里程计来源尚待确认；明确接入并验证直行、转弯和重置前，保持 `odometry_confirmed=false`。
-- 实测双天线基线到车头的安装角、原 RTK 天线前／左偏移与地图偏移；对应确认项须由实测产生。`initial_heading_rad` 仅在显式 `heading_source=configured` 的旧模式或隔离测试中使用，新双天线模式不回退到它。
+- 当前 `localization_mode=rtk_imu` 不订阅外部里程计，`odom_topic` 保持空；`odometry_confirmed` 是旧路径字段，不作为新模式放行项。新模式的 `feedback_confirmed` 只有验证真实多普勒速度、角速度和停车反馈后才可确认。
+- 实测新 IMU 到车体的安装外参、磁北到真北参考、磁场校准与实际航向精度，以及原 RTK 天线杆臂和地图原点；未知值保持 null，确认项保持 false。当前模式不使用 `initial_heading_rad` 或运动航迹角做默认航向。
 - 实测保守包围机器人运动外形的半径，验证雷达高度带和覆盖后设置 `footprint_confirmed`、`cloud_frame_confirmed`。
 - `motion_enabled` 默认 false；完成以上确认后才允许现场运动。
 - NTRIP 凭据继续保存在 `/home/nvidia/ntrip/ntrip.conf`，由其虚拟环境运行；文件锁确保单一串口读取者。
 
-固定解要求 hAcc≤0.20 m，浮点解≤1.0 m；均要求有效定位、差分标志、对应 GGA 解类型及改正年龄≤5 s，稳定 5 s。
+当前 `robot.json` 为米级演示档：固定解和浮点解均要求接收机报告的 hAcc≤3.0 m，到达距离容差均为 3.0 m。仍要求有效定位、差分标志、对应 GGA 解类型及改正年龄≤5 s，稳定 5 s。普通差分／单点／无效解未因此放开。通用 `DEFAULTS` 保留更严格值，部署值以 `robot.json` 覆盖。
 缺少改正年龄保持未就绪，不能用 RTCM 到达时间替代。数据重复不刷新有效期，传感器过期停止运动。
-任务固定验收档位；固定解任务降为浮点解时停车，浮点解任务的到达容差为 1.5 m，固定解为 0.5 m。
+任务固定验收档位；固定解任务降为浮点解时仍停车。当前演示档固定／浮点到达容差均为 3.0 m，但仍需终态与停稳确认；它不是实际地理误差≤3 m的保证。测试目标应明显远于3 m，避免起点已在容差内而无需行驶。
 
-定位以可靠连续里程计为基础，由原 u-blox 提供 GNSS 平移校正，新双天线提供绝对航向校正；不是完整惯导融合，采样延迟与真实精度仍须实测。
-里程计重置或定位跳变会锁止，检查后重启。未配置可靠来源时保持未就绪，不自动回退到 ICP 或 GNSS-only 里程计。
+当前定位直接消费 RTK 位置／多普勒速度与新 IMU 姿态／角速度。内部生成 Nav2 的 Odometry 消息及局部连续参考，不是额外依赖本体里程计，也不是完整 GNSS／惯导融合；真实误差与延迟仍须实测。
+数据时间倒退、异常位置或航向跳变、IMU 输入中断／采集重启会锁止，检查后重启。原本只靠位置差分或控制指令推算运动的路径不启用；不自动回退到厂商 `/ODOM` 或 ICP。
 
-## 位置与航向分别接入
+## RTK＋新 IMU 直接运动反馈（当前默认）
 
-`heading_source=dual_antenna` 是当前配置。位置沿用 `/home/nvidia/ntrip` 的唯一采集者、千寻差分和 UBX NAV-PVT 解码；不改写该目录配置。新 `heading_stream.py` 只读 `/dev/rtk`，不注入差分、不使用它的 GGA 替代原 RTK 位置。两路通过各自的本机 UDP 端口输入定位节点（位置 18765、航向 18766）。
+默认 `localization_mode=rtk_imu`、`heading_source=wit_imu`，不订阅本体、轮腿、ICP 或 LIO 里程计。位置唯一来源仍是原 u-blox NAV-PVT；速度使用同一接收机的北／东多普勒速度和报告的速度精度。新 WIT 十轴 IMU 提供磁参考欧拉角与三轴角速度；不积分加速度、不把控制指令当实测速度，也不靠位置差分估计速度。
+
+内部 `odom→base_link` 由有效多普勒速度和角速度在局部参考系连续推进；`map→odom` 由接受的 RTK 位置与 IMU 绝对朝向计算，GNSS 校正不直接跳动局部里程计。世界位置取最近 RTK 测量，最多在数据新鲜期内用其多普勒速度作短时外推，状态中保留实际 `fix_age_s` 和 `feedback.prediction_s`；不重复刷新旧 RTK 有效期。任一必要数据不可用时不放行导航。
+
+`wit_imu` 的关键配置：
+
+- `port`：明确指定新 CP2102 串口 by-id 路径，不回退到原 RTK 端口；默认 9600 波特率、UDP 18767。
+- `base_from_imu`：实测 4×4 传感器到车体变换，旋转同时用于角速度轴转换和姿态转换。未知保持 null，不能默认 IMU Z 轴就是车体竖直轴。
+- `magnetic_declination_rad`：东偏为正的磁偏角；厂家九轴角度按磁参考 ENU 解读，真 ENU 角为磁 ENU 角减去该值。必须结合实际地点、日期和独立方向参照核对，不默认零偏。
+- `yaw_std_deg`：验证后的航向不确定度，不把厂家标称 1°或静止抖动当作实测绝对误差；未知保持 null。
+- `mounting_confirmed`、`reference_confirmed`、`quality_confirmed`：安装、真北参考及磁校准／航向质量的现场确认，默认全部 false。
+
+`wit_stream.py` 仅独占采集并发送 `FF AA 27 24 00`（READADDR 查询 AXIS6）确认九轴模式，先丢弃旧缓冲回复；不解锁、不切换算法、不标定、不保存设置。节点从 collector 元数据和原始校验帧确认当前模式，六轴、未知模式或重启后的旧数据不作为有效绝对航向。
+
+速度要求为合格 RTK 解、有效多普勒速度及报告的速度不确定度不超过 `gnss_speed_accuracy_mps`（默认质量策略 0.10 m/s，非实测性能保证）。缺失或零精度字段不当成“零速度”。原 RTK 天线旋转杆臂的速度也会扣除，再转换成车体速度。
+
+默认 `motion_enabled=false`、`feedback_confirmed=false`。旧 `odometry_confirmed=false` 不需要为新模式改成 true。角度帧失效时撤销导航许可；若陀螺与多普勒仍可靠，保留测量反馈以确认停车。全部 IMU 或 GNSS 丢失时不能伪造零速度来宣称已停，按看门狗及执行器的超时／锁止处理。
+
+诊断默认 `LYNX_GNSS_MODE=observe`、`LYNX_IMU_MODE=observe`，不抢串口；确认两接收机无占用后，才可显式选择 managed 在诊断中检查真实输入。动态 TF 仍隔离到 `/outdoor/tf`，正式 manifest 和底盘程序不自动修改。
+
+本地 Docker 完整测试用 `python3 tests/isolated_task_flow.py --rtk-imu`：只提供 5 Hz 合成 RTK 位置／多普勒与 10 Hz 二进制 IMU，不提供外部里程计；真实网页、任务与 Nav2 控制虚拟底盘。它不是实车精度验收。
+
+## 室内模拟 RTK（调试全流程） 
+
+`deploy/lynx/mock_virtual_base.py` 按真实接收机的同一格式（UBX NAV-PVT＋NMEA GGA，同一 UDP 端口与主机单调时间前缀）输出合成定位，定位与导航代码不改；
+虚拟底盘只积分被重映射的指令话题 `/mock_base/cmd_vel`，**不产生真实速度、不启动速度桥**，适合室内验证“网页选点→任务→Nav2→到达”。
+真实 IMU 仍可用；航向使用 `course_heading`（磁航向起步、按实测航迹方向校正），页面上显示的是虚拟位姿。
+
+启动（山猫，独立工作目录）：
+
+```bash
+bash start_mock.sh   # 内部：mock_virtual_base + wit_stream + ros2 launch run/mock.launch.py
+curl -s -X POST -H 'Content-Type: application/json' -d '{"active":true}' http://127.0.0.1:8766/api/activation
+```
+
+网页端口 8766。真实模式仍用 `start_production.sh`（端口 8765、真实 `/cmd_vel`＋`cmd_vel_bridge.py` 转发到 `/NAV_CMD`）。
+演示配置 `deploy/lynx/robot.fieldtest.json`（真实）与 `robot.mock.json`（模拟）记录了三米档、安装矩阵、以及**未实测项**（天线杆臂、磁偏角、航向绝对精度）；
+`scan_range_min_m=1.2` 用于剔除前雷达 1.2 m 内的自车腿部回波，否则 DWB 所有轨迹都判碰撞。
+
+## 保留旧路径：RTK＋双天线分别接入
+
+`localization_mode=external_odom`、`heading_source=dual_antenna` 是保留的旧路径，不是当前默认。位置沿用 `/home/nvidia/ntrip` 的唯一采集者、千寻差分和 UBX NAV-PVT 解码；不改写该目录配置。新 `heading_stream.py` 只读 `/dev/rtk`，不注入差分、不使用它的 GGA 替代原 RTK 位置。两路通过各自的本机 UDP 端口输入定位节点（位置 18765、航向 18766）。
 
 `dual_heading.baseline_to_body_yaw_rad` 为实测基线至车头逆时针角，未知必须为 null；`mounting_confirmed` 与 `quality_confirmed` 默认 false。THS A 才提供有效真北航向；HDT 仅显示未验证值，THS V 或超时立即撤销有效性。GGA 定位固定解不能替代双天线定向质量验证。
 

@@ -126,6 +126,7 @@ def test_hdt_zero_and_tra_cannot_initialize_heading():
 
 def test_config_separates_udp_ports_and_requires_a_measured_mounting_angle(tmp_path):
     data=json.loads((ROOT/'deploy/lynx/robot.json').read_text())
+    data.update(localization_mode='external_odom',heading_source='dual_antenna')
     assert not data['motion_enabled']
     path=tmp_path/'robot.json'
     for change,match in (({'udp_port':data['gnss_udp_port']},'separate UDP'),
@@ -162,6 +163,7 @@ def test_real_streamer_forwards_stamped_serial_bytes_without_commands(tmp_path):
     udp=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
     udp.bind(('127.0.0.1',0));udp.settimeout(3)
     data=json.loads((ROOT/'deploy/lynx/robot.json').read_text())
+    data.update(localization_mode='external_odom',heading_source='dual_antenna')
     data['dual_heading'].update(port=path,udp_port=udp.getsockname()[1])
     cfg=tmp_path/'robot.json';cfg.write_text(json.dumps(data))
     process=subprocess.Popen([sys.executable,str(ROOT/'deploy/lynx/heading_stream.py'),

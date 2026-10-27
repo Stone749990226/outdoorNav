@@ -32,10 +32,19 @@ export type NavigationStatus = {
     hacc_m: number;
     satellites: number;
     correction_age_s: number | null;
+    vel_e_mps?: number | null;
+    vel_n_mps?: number | null;
+    speed_accuracy_mps?: number | null;
   } | null;
   heading?: {
-    source: "configured" | "dual_antenna";
+    source: "configured" | "dual_antenna" | "wit_imu";
     ready: boolean;
+    raw_yaw_deg?: number | null;
+    angles_fresh?: boolean;
+    gyro_fresh?: boolean;
+    nine_axis_verified?: boolean;
+    reference_confirmed?: boolean;
+    body_yaw_rate_rps?: number | null;
     heading_fresh?: boolean;
     true_heading_deg?: number | null;
     body_yaw_enu_rad?: number | null;
@@ -43,6 +52,14 @@ export type NavigationStatus = {
     quality_confirmed?: boolean;
     age_s?: number | null;
   } | null;
+  localization_mode?: "external_odom" | "rtk_imu";
+  velocity_source?: string;
+  feedback?: {
+    ready: boolean;
+    confirmed: boolean;
+    source: string;
+    reason?: string | null;
+  };
   position_source?: string;
   diagnostic?: boolean;
   command_topic?: string;

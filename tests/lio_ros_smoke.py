@@ -33,7 +33,7 @@ def run():
                time_unit='s', time_field='time', scan_lines=96,
                extrinsics_confirmed=True, timing_confirmed=True, imu_units_confirmed=True,
                base_from_imu=np.eye(4).tolist(), base_from_lidar=np.eye(4).tolist())
-    config.update(lio=lio, cloud_topic='/synthetic/points', odom_topic='/outdoor/lio/odom')
+    config.update(localization_mode='external_odom', heading_source='configured', lio=lio, cloud_topic='/synthetic/points', odom_topic='/outdoor/lio/odom')
     with tempfile.TemporaryDirectory(prefix='outdoor-lio-smoke-') as directory:
         directory = Path(directory)
         robot, params = directory/'robot.json', directory/'fastlio.yaml'

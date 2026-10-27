@@ -1,5 +1,6 @@
 """Real frontend/API/Nav2 with a virtual base; Docker-only, no robot connection."""
 
+import argparse
 import json
 import math
 import os
@@ -15,6 +16,9 @@ from urllib.request import Request, urlopen
 
 if not Path('/.dockerenv').is_file():
     raise SystemExit('Run only inside the local test Docker container, never on the robot')
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--rtk-imu',action='store_true',help='No external odometry: GNSS Doppler + binary WIT packets only')
+args=parser.parse_args()
 os.environ.update(ROS_DOMAIN_ID='94',ROS_LOCALHOST_ONLY='1',RMW_IMPLEMENTATION='rmw_fastrtps_cpp')
 import rclpy
 from rclpy.node import Node
@@ -28,18 +32,18 @@ from std_msgs.msg import Header
 from tf2_msgs.msg import TFMessage
 
 from outdoornav.bundle import load_bundle
-from outdoornav.config import HEADING_DEFAULTS
+from outdoornav.config import DEFAULTS, HEADING_DEFAULTS, WIT_DEFAULTS
 from outdoornav.coordinates import local_radii
 
 ROOT=Path(__file__).resolve().parents[1]
-OUTPUT=ROOT/'artifacts/validation/isolated-task-flow-20261023'
+OUTPUT=ROOT/'artifacts/validation'/('isolated-task-flow-'+time.strftime('%Y%m%d'))
 OUTPUT.mkdir(parents=True,exist_ok=True)
 RUN=OUTPUT/time.strftime('run-%H%M%S')
 RUN.mkdir()
 API='http://127.0.0.1:19865'
 CONTROL='http://127.0.0.1:19866'
 COMMAND='/isolated_task_flow/cmd_vel'
-for port in (19865,19866,29865,29866):
+for port in (19865,19866,29865,29866,29867):
     kind=socket.SOCK_DGRAM if port>=29000 else socket.SOCK_STREAM
     with socket.socket(socket.AF_INET,kind) as probe:
         if kind==socket.SOCK_STREAM:probe.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
@@ -53,11 +57,21 @@ direction=((b['x']-a['x'])/distance,(b['y']-a['y'])/distance)
 initial_yaw=math.atan2(direction[1],direction[0])
 config={**real_config,**{key:True for key in ('calibrated','antenna_offset_confirmed',
         'footprint_confirmed','cloud_frame_confirmed','odometry_confirmed')}}
-config.update(motion_enabled=True,odom_topic='/isolated_task_flow/native_odom',
+# Use strict test tolerances so short synthetic goals require actual virtual motion.
+# The shipped 3 m demo policy is covered separately in test_demo_policy.py.
+config.update({key:DEFAULTS[key] for key in ('gnss_fixed_hacc_m','gnss_float_hacc_m','fixed_arrival_m','float_arrival_m')})
+config.update(localization_mode='external_odom',motion_enabled=True,odom_topic='/isolated_task_flow/native_odom',
               cloud_topic='/isolated_task_flow/cloud',gnss_udp_port=29865,http_port=19865,
               antenna_xy_m=[0.0,0.0],map_offset_xy_m=[0.0,0.0],heading_source='dual_antenna')
 config['dual_heading']={**HEADING_DEFAULTS,'udp_port':29866,'mounting_confirmed':True,
                         'quality_confirmed':True,'baseline_to_body_yaw_rad':0.0}
+if args.rtk_imu:
+    config.update(localization_mode='rtk_imu',heading_source='wit_imu',odom_topic='',
+                  odometry_confirmed=False,feedback_confirmed=True)
+    config['wit_imu']={**WIT_DEFAULTS,'udp_port':29867,
+        'base_from_imu':[[1.,0.,0.,0.],[0.,1.,0.,0.],[0.,0.,1.,0.],[0.,0.,0.,1.]],
+        'magnetic_declination_rad':0.,'yaw_std_deg':1.,'mounting_confirmed':True,
+        'reference_confirmed':True,'quality_confirmed':True}
 (RUN/'synthetic-only.json').write_text(json.dumps(config,indent=2))
 launch=f'''from launch import LaunchDescription
 from launch.actions import GroupAction, IncludeLaunchDescription
@@ -99,7 +113,7 @@ class VirtualBase(Node):
         self.trace=[]
         self.events=[]
         self.nonzero_commands=0
-        self.odom=self.create_publisher(Odometry,config['odom_topic'],10)
+        self.odom=None if args.rtk_imu else self.create_publisher(Odometry,config['odom_topic'],10)
         self.cloud=self.create_publisher(PointCloud2,config['cloud_topic'],10)
         self.static=self.create_publisher(TFMessage,'/tf_static',QoSProfile(depth=10,durability=DurabilityPolicy.TRANSIENT_LOCAL))
         mount=TransformStamped();mount.header.frame_id='base_link';mount.child_frame_id='isolated_lidar'
@@ -142,7 +156,7 @@ class VirtualBase(Node):
             yaw=self.yaw-initial_yaw
             odom.pose.pose.orientation.z,odom.pose.pose.orientation.w=math.sin(yaw/2),math.cos(yaw/2)
             odom.twist.twist.linear.x,odom.twist.twist.angular.z=self.v,self.w
-            self.odom.publish(odom)
+            if self.odom is not None:self.odom.publish(odom)
             self.cloud.publish(point_cloud2.create_cloud(Header(stamp=stamp,frame_id='isolated_lidar'),self.fields,self.rays))
             self.epoch+=50
             lat=bundle['origin_wgs84']['latitude']+math.degrees(self.y/self.north)
@@ -150,13 +164,28 @@ class VirtualBase(Node):
             payload=bytearray(92);struct.pack_into('<I',payload,0,self.epoch)
             payload[20],payload[21],payload[23]=3,3|(2<<6),20
             struct.pack_into('<iiiiII',payload,24,round(lon*1e7),round(lat*1e7),0,0,100,150)
+            struct.pack_into('<iii',payload,48,round(self.v*math.sin(self.yaw)*1000),round(self.v*math.cos(self.yaw)*1000),0)
+            struct.pack_into('<I',payload,68,20)
             raw=bytes([1,7,92,0])+payload;aa=bb=0
             for value in raw:aa=(aa+value)&255;bb=(bb+aa)&255
             for raw in (nmea('GNGGA,120000,3000.0,N,12000.0,E,4,20,0.8,0,M,0,M,1,0001'),b'\xb5\x62'+raw+bytes([aa,bb])):
-                self.udp.sendto(struct.pack('!d',now)+raw,('127.0.0.1',29865))
+                if not args.rtk_imu or self.epoch%200==0:
+                    self.udp.sendto(struct.pack('!d',now)+raw,('127.0.0.1',29865))
             heading=(90-math.degrees(self.yaw))%360
             raw=nmea(f'GNTHS,{heading:.8f},A') if self.heading_valid else nmea('GNTHS,,V')
-            if self.heading_stream:
+            if args.rtk_imu:
+                if self.epoch%100==0:
+                    def wit_frame(kind,values):
+                        data=bytes([0x55,kind])+struct.pack('<hhhh',*values)
+                        return data+bytes([sum(data)&255])
+                    imu=wit_frame(0x52,[0,0,round(math.degrees(self.w)/2000*32768),0])
+                    if self.heading_stream:
+                        angle=math.atan2(math.sin(self.yaw),math.cos(self.yaw))
+                        imu+=wit_frame(0x53,[0,0,max(-32768,min(32767,round(angle/math.pi*32768))),0])
+                    packet={'schema_version':1,'source':'wit_imu','generation':'isolated-virtual-wit',
+                            'axis6_register':0,'received':now,'raw_hex':imu.hex()}
+                    self.udp.sendto(json.dumps(packet).encode(),('127.0.0.1',29867))
+            elif self.heading_stream:
                 self.udp.sendto(struct.pack('!d',now)+raw,('127.0.0.1',29866))
             self.trace.append({'time':now,'x':self.x,'y':self.y,'yaw':self.yaw,'v':self.v,'w':self.w,
                                'heading_valid':self.heading_valid,'heading_stream':self.heading_stream})
@@ -164,6 +193,7 @@ class VirtualBase(Node):
     def snapshot(self):
         with self.lock:
             return {'domain':94,'localhost_only':True,'virtual_only':True,'command_topic':COMMAND,
+                'localization_mode':config['localization_mode'],'external_odometry_published':self.odom is not None,
                 'x':self.x,'y':self.y,'yaw':self.yaw,'v':self.v,'w':self.w,
                 'start':a,'direction':direction,'nonzero_commands':self.nonzero_commands,
                 'heading_stream':self.heading_stream,'isolation_failure':self.isolation_failure,'backend_pid':backend.pid if backend else None}
@@ -222,6 +252,10 @@ try:
         time.sleep(.2)
     if not status or not status['ready']:raise RuntimeError('Not ready: '+json.dumps(status))
     assert status['command_topic']==COMMAND,status
+    if args.rtk_imu:
+        assert status['odometry_source']=='rtk_doppler+wit_imu',status
+        assert virtual.count_subscribers('/ODOM')==0
+        assert virtual.odom is None
     report['initial_status']=status
     print('ISOLATED_TASK_FLOW_READY '+str(RUN),flush=True)
     browser_log=(RUN/'browser.log').open('w')

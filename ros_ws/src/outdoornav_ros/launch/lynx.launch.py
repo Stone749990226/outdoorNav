@@ -47,7 +47,9 @@ def nodes(context):
             "global_frame": frame,
             "robot_base_frame": "base_link",
             "rolling_window": rolling,
-            "track_unknown_space": True,
+            # Unknown cells ahead of the robot must not be treated as collisions;
+            # the planner keeps its own allow_unknown policy on the global grid.
+            "track_unknown_space": robot["local_track_unknown"] if rolling else True,
             "update_frequency": 5.0 if rolling else 2.0,
             "publish_frequency": 5.0 if rolling else 2.0,
             "always_send_full_costmap": True,
@@ -59,8 +61,8 @@ def nodes(context):
             "plugins": ["obstacle_layer", "inflation_layer"],
             "obstacle_layer": {
                 "plugin": "nav2_costmap_2d::ObstacleLayer",
-                "enabled": True,
-                "observation_sources": "scan",
+                "enabled": robot["obstacle_layer_enabled"],
+                "observation_sources": "scan" if robot["obstacle_layer_enabled"] else "",
                 "scan": {
                     "topic": "/outdoor/scan",
                     "data_type": "LaserScan",
@@ -170,7 +172,7 @@ def nodes(context):
                     "transform_tolerance": 0.2,
                     "min_height": robot["cloud_min_height_m"],
                     "max_height": robot["cloud_max_height_m"],
-                    "range_min": robot["footprint_radius_m"],
+                    "range_min": robot["scan_range_min_m"] or robot["footprint_radius_m"],
                     "range_max": 8.0,
                     "use_inf": True,
                 }

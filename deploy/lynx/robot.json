@@ -24,7 +24,7 @@
   "lio": {
     "enabled": false
   },
-  "heading_source": "dual_antenna",
+  "heading_source": "wit_imu",
   "dual_heading": {
     "port": "/dev/rtk",
     "baud": 115200,
@@ -33,5 +33,23 @@
     "baseline_to_body_yaw_rad": null,
     "mounting_confirmed": false,
     "quality_confirmed": false
-  }
+  },
+  "localization_mode": "rtk_imu",
+  "feedback_confirmed": false,
+  "wit_imu": {
+    "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0",
+    "baud": 9600,
+    "udp_port": 18767,
+    "timeout_s": 0.5,
+    "base_from_imu": null,
+    "magnetic_declination_rad": null,
+    "yaw_std_deg": null,
+    "mounting_confirmed": false,
+    "reference_confirmed": false,
+    "quality_confirmed": false
+  },
+  "gnss_fixed_hacc_m": 3.0,
+  "gnss_float_hacc_m": 3.0,
+  "fixed_arrival_m": 3.0,
+  "float_arrival_m": 3.0
 }

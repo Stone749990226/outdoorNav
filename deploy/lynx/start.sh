@@ -50,6 +50,15 @@ if "$task_root/.venv/bin/python" -c 'import sys; from outdoornav.config import l
     *) echo 'LYNX_HEADING_MODE must be managed or observe'; exit 2 ;;
   esac
 fi
+if "$task_root/.venv/bin/python" -c 'import sys; from outdoornav.config import load_robot_config; sys.exit(load_robot_config(sys.argv[1])["heading_source"] != "wit_imu")' "$task_config"; then
+  task_imu_mode="${LYNX_IMU_MODE:-managed}"
+  if [[ "$task_diagnostic" == true && -z "${LYNX_IMU_MODE:-}" ]]; then task_imu_mode=observe; fi
+  case "$task_imu_mode" in
+    managed) start_child "$task_root/.venv/bin/python" "$task_root/deploy/lynx/wit_stream.py" --config "$task_config" ;;
+    observe) echo 'IMU observation only: no serial reader will be started' ;;
+    *) echo 'LYNX_IMU_MODE must be managed or observe'; exit 2 ;;
+  esac
+fi
 start_child ros2 launch outdoornav_ros lynx.launch.py \
   bundle:="$task_root/scenes/north_campus/generated/bundle.json" \
   robot_config:="$task_config" places:="$task_places" run_dir:="$task_run" \

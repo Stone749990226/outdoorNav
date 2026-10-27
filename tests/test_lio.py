@@ -16,7 +16,7 @@ def configuration():
     lio.update(enabled=True, extrinsics_confirmed=True, timing_confirmed=True,
                imu_units_confirmed=True, imu_frame='imu', imu_source_frame='imu', scan_lines=96,
                base_from_imu=np.eye(4).tolist(), base_from_lidar=np.eye(4).tolist())
-    return {**config, 'sensor_timeout_s': 1, 'odom_topic': '/outdoor/lio/odom', 'lio': lio}
+    return {**config, 'localization_mode':'external_odom', 'heading_source':'configured', 'sensor_timeout_s': 1, 'odom_topic': '/outdoor/lio/odom', 'lio': lio}
 
 
 def test_lio_requires_measured_contract_and_composes_backend_extrinsics(tmp_path):

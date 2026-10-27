@@ -95,7 +95,7 @@ class LynxNavigation(Navigation):
         health.update({
             'localization': bool(geo.get('ready')) and now - self.geo_at < timeout
                             and (required != 'fixed' or grade == 'fixed'),
-            'heading': bool(geo.get('heading', {}).get('ready')) if config['heading_source'] == 'dual_antenna' else True,
+            'heading': bool(geo.get('heading', {}).get('ready')) if config['heading_source'] in ('dual_antenna','wit_imu') else True,
             'calibration': config['calibrated'] and config['antenna_offset_confirmed']
                            and config['footprint_confirmed'] and config['cloud_frame_confirmed'],
             'motion_enabled': config['motion_enabled'],
@@ -103,7 +103,8 @@ class LynxNavigation(Navigation):
             'sensor_extrinsics': bool(geo.get('extrinsics', {}).get('ready')),
             'service_active': self.service_active,
             'controller_stopped': self.startup_stopped and self.stop_failure is None,
-            'odometry': config['odometry_confirmed'] and now - self.velocity_at < self.config["sensor_timeout_s"],
+            'odometry': (config['feedback_confirmed'] if config['localization_mode'] == 'rtk_imu' else config['odometry_confirmed'])
+                        and now-self.velocity_at < timeout,
             'actions': self.path_client.server_is_ready() and self.follow_client.server_is_ready(),
             'exclusive_owners': not geo.get('ownership_conflict', False) and not self.guard.get('conflict', False),
             'command_guard': now - self.guard_at < timeout and self.guard.get('output_topic') == self.resolve_topic_name(
@@ -121,7 +122,9 @@ class LynxNavigation(Navigation):
                 'scene_version': self.bundle['scene_version'], 'route_version': self.bundle['route_version'],
                 'ready': all(health.values()), 'health': health,
                 'diagnostic': self.diagnostic,
-                'odometry_source': config.get('odom_topic') or None,
+                'localization_mode':config['localization_mode'],
+                'odometry_source': 'rtk_doppler+wit_imu' if config['localization_mode'] == 'rtk_imu' else (config.get('odom_topic') or None),
+                'feedback':geo.get('feedback'),'velocity_source':geo.get('velocity_source'),
                 'tf_conflicts': geo.get('tf_conflicts', {}),
                 'command_topic': self.resolve_topic_name('/outdoor/diagnostic_cmd_vel' if self.diagnostic else '/cmd_vel'),
                 'not_ready_reasons': readiness_reasons(health, geo),
@@ -172,9 +175,13 @@ class LynxNavigation(Navigation):
             raise RuntimeError('Task has no GNSS acceptance policy')
         if not self.controller_parameters.service_is_ready():
             raise RuntimeError('Controller parameter service is unavailable')
+        # The controller's goal checker also ends every rolling-window leg, so a
+        # meter-level arrival tolerance here would let it "succeed" at the first
+        # horizon point and stall the task. Task-level arrival keeps the full
+        # configured tolerance; the controller stays tight.
         request = SetParametersAtomically.Request()
         request.parameters = [Parameter('goal_checker.xy_goal_tolerance',
-                                        value=float(tolerance)).to_parameter_msg()]
+                                        value=float(min(tolerance, 0.5))).to_parameter_msg()]
         result = await self.result(self.controller_parameters.call_async(request), task_id)
         if not result.result.successful:
             raise RuntimeError('Controller rejected the task arrival tolerance')

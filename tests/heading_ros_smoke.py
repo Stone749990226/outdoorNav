@@ -47,7 +47,7 @@ def pvt(lat, lon, epoch):
 
 def main():
     config = json.loads((ROOT/'deploy/lynx/robot.json').read_text())
-    config.update(calibrated=True, motion_enabled=False, odom_topic='/test/continuous_odom',
+    config.update(localization_mode='external_odom', calibrated=True, motion_enabled=False, odom_topic='/test/continuous_odom',
                   heading_source='dual_antenna', gnss_udp_port=29765)
     config['dual_heading'] = {**HEADING_DEFAULTS, 'udp_port':29766,
                              'mounting_confirmed':True, 'quality_confirmed':True,
