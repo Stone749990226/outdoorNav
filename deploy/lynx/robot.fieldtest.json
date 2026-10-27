@@ -58,10 +58,10 @@
         1.0
       ]
     ],
-    "magnetic_declination_rad": 0.0,
+    "magnetic_declination_rad": -0.0995,
     "yaw_std_deg": null,
     "mounting_confirmed": true,
-    "reference_confirmed": false,
+    "reference_confirmed": true,
     "quality_confirmed": false,
     "course_heading": true
   },
@@ -69,7 +69,7 @@
   "gnss_float_hacc_m": 3.0,
   "fixed_arrival_m": 3.0,
   "float_arrival_m": 3.0,
-  "_demo_note": "Meter-level field demo: IMU axes from user (front=-Y,left=+X,up=+Z) and photo; heading anchored by magnetic at start then corrected by measured RTK travel direction; antenna offset, footprint radius, declination and absolute heading accuracy are NOT measured; arrival tolerance 3 m is a software criterion, not a geographic accuracy claim. Correction-age limit raised to 30 s for the field demo: the caster corrections were measured fresh (GPS epoch 0.3-0.7 s at arrival) while the receiver-reported GGA age repeatedly climbs to ~9 s; this remains a quality gate, not an accuracy claim. scan_range_min_m=1.2 ignores the front lidar self/leg returns below 1.2 m that otherwise block every DWB trajectory.",
+  "_demo_note": "Meter-level field demo: IMU axes from user (front=-Y,left=+X,up=+Z) and photo; heading anchored by magnetic at start then corrected by measured RTK travel direction; antenna offset assumed at vehicle center (0,0) per owner decision; magnetic declination set from WMM model lookup for Hangzhou 2026 (-0.0995 rad, ~5.7 deg west, not field-measured); footprint radius and absolute heading accuracy are NOT measured; arrival tolerance 3 m is a software criterion, not a geographic accuracy claim. Correction-age limit raised to 30 s for the field demo: the caster corrections were measured fresh (GPS epoch 0.3-0.7 s at arrival) while the receiver-reported GGA age repeatedly climbs to ~9 s; this remains a quality gate, not an accuracy claim. scan_range_min_m=1.2 ignores the front lidar self/leg returns below 1.2 m that otherwise block every DWB trajectory.",
   "correction_max_age_s": 30.0,
   "scan_range_min_m": 1.2,
   "obstacle_layer_enabled": true,
