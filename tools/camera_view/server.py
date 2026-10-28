@@ -15,16 +15,28 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parent
-LIMITS = {
-    'width': (160, 1920),
-    'fps': (0.2, 10.0),
-    'jpeg_quality': (2, 31),
-}
+# One slider trades picture quality for bandwidth. Each anchor is
+# (level, width_px, ffmpeg -q:v); values between anchors are interpolated.
+QUALITY_ANCHORS = [(0, 240, 28), (25, 320, 20), (50, 480, 14), (75, 800, 9), (100, 1280, 5)]
+LEVEL_RANGE = (0, 100)
+INTERVAL_RANGE = (0.1, 5.0)
+
+
+def level_settings(level):
+    level = max(LEVEL_RANGE[0], min(LEVEL_RANGE[1], float(level)))
+    for (l0, w0, q0), (l1, w1, q1) in zip(QUALITY_ANCHORS, QUALITY_ANCHORS[1:]):
+        if level <= l1:
+            t = (level - l0) / (l1 - l0)
+            return int(round(w0 + (w1 - w0) * t)), int(round(q0 + (q1 - q0) * t))
+    return QUALITY_ANCHORS[-1][1], QUALITY_ANCHORS[-1][2]
 
 
 class Camera:
     def __init__(self, name, url, settings):
-        self.name, self.url, self.settings = name, url, settings
+        self.name, self.url = name, url
+        self.settings = dict(settings, width=settings.get('width', 480),
+                             jpeg_quality=settings.get('jpeg_quality', 14),
+                             fps=settings.get('fps', 1.0))
         self.lock = threading.Lock()
         self.frame = None
         self.frame_at = 0.0
@@ -137,6 +149,11 @@ class Service:
         self.config = config
         self.cameras = {name: Camera(name, url, config)
                         for name, url in config['cameras'].items()}
+        current = self.settings()
+        for camera in self.cameras.values():
+            camera.settings.update({'width': current['width'],
+                                    'jpeg_quality': current['jpeg_quality'],
+                                    'fps': current['fps']})
         threading.Thread(target=self._probe_loop, daemon=True).start()
 
     def _probe_loop(self):
@@ -150,23 +167,37 @@ class Service:
         return self.cameras.get(name)
 
     def settings(self):
-        return {key: self.config[key] for key in LIMITS}
+        width, quality = level_settings(self.config.get('level', 55))
+        interval = max(INTERVAL_RANGE[0], min(INTERVAL_RANGE[1], self.config.get('interval_s', 1.0)))
+        return {'level': round(float(self.config.get('level', 55)), 1),
+                'interval_s': round(float(interval), 3),
+                'width': width, 'jpeg_quality': quality,
+                'fps': round(1.0 / interval, 3)}
 
     def update_settings(self, values):
         changes = {}
-        for key, (low, high) in LIMITS.items():
-            if key not in values:
-                continue
-            value = values[key]
+        if 'level' in values:
+            value = values['level']
             if isinstance(value, bool) or not isinstance(value, (int, float)):
-                raise ValueError(key + ' must be a number')
-            if not low <= value <= high:
-                raise ValueError('%s must be %g..%g' % (key, low, high))
-            changes[key] = float(value) if key != 'jpeg_quality' else int(value)
+                raise ValueError('level must be a number')
+            if not LEVEL_RANGE[0] <= value <= LEVEL_RANGE[1]:
+                raise ValueError('level must be %g..%g' % LEVEL_RANGE)
+            changes['level'] = float(value)
+        if 'interval_s' in values:
+            value = values['interval_s']
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError('interval_s must be a number')
+            if not INTERVAL_RANGE[0] <= value <= INTERVAL_RANGE[1]:
+                raise ValueError('interval_s must be %g..%g s' % INTERVAL_RANGE)
+            changes['interval_s'] = float(value)
         if not changes:
-            raise ValueError('no recognised settings; expected ' + ', '.join(LIMITS))
+            raise ValueError('expected level and/or interval_s')
+        # Cameras read width/quality/fps from this live mapping.
         self.config.update(changes)
+        width, quality = level_settings(self.config['level'])
+        interval = self.config['interval_s']
         for camera in self.cameras.values():
+            camera.settings.update({'width': width, 'jpeg_quality': quality, 'fps': 1.0 / interval})
             camera.restart_pipeline()
         return {'settings': self.settings()}
 
@@ -188,42 +219,45 @@ HTML = """<!doctype html><meta charset="utf-8"><title>山猫相机</title>
 <style>
  body{font-family:system-ui,sans-serif;margin:0;background:#111;color:#eee}
  header{padding:10px 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#1b1b1b}
- .controls{padding:8px 14px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;background:#161616;font-size:13px}
+ .controls{padding:8px 14px;display:flex;gap:18px;align-items:center;flex-wrap:wrap;background:#161616;font-size:13px}
+ .controls label{display:flex;gap:8px;align-items:center}
+ input[type=range]{width:180px;accent-color:#2b6cb0}
  button{padding:6px 14px;border:1px solid #444;background:#222;color:#eee;border-radius:6px;cursor:pointer}
  button.active{background:#2b6cb0;border-color:#2b6cb0}
  button:disabled{opacity:.35;cursor:not-allowed}
- select{background:#222;color:#eee;border:1px solid #444;border-radius:6px;padding:4px 6px}
  img{display:block;width:100%;max-width:1280px;margin:10px auto;background:#000;min-height:200px}
  small{opacity:.75}
 </style>
 <header><strong>山猫相机</strong><span id="cams"></span><small id="info">连接中…</small></header>
 <div class="controls">
-  <label>宽度 <select id="width"></select></label>
-  <label>画质 <select id="quality">
-    <option value="3">高（大）</option><option value="6">中</option>
-    <option value="8">省流（默认）</option><option value="12">很省流</option>
-  </select></label>
-  <label>更新间隔 <select id="interval">
-    <option value="500">0.5 秒</option><option value="1000" selected>1 秒</option>
-    <option value="2000">2 秒</option><option value="5000">5 秒</option>
-  </select></label>
+  <label>画质/带宽 <input id="level" type="range" min="0" max="100" step="1" value="55"><small id="levelText"></small></label>
+  <label>更新间隔 <input id="interval" type="range" min="0" max="1000" step="1" value="500"><small id="intervalText"></small></label>
   <small id="rate"></small>
 </div>
 <img id="frame" alt="camera">
 <script>
-let current = null, timer = null, status = {}, settings = {width:640, fps:1, jpeg_quality:8};
-const widths = [320, 480, 640, 960, 1280];
-function fillWidths(){
-  const box = document.getElementById('width');
-  box.innerHTML='';
-  for(const w of widths){ const o=document.createElement('option'); o.value=w; o.textContent=w+' px'; box.appendChild(o); }
-  box.value = String(settings.width || 640);
-}
+let current = null, timer = null, status = {};
+let settings = {level:55, interval_s:1, width:480, jpeg_quality:14, fps:1};
+const I_MIN = 0.1, I_MAX = 5.0, I_SPAN = Math.log(I_MAX / I_MIN);
+const intervalFromSlider = v => I_MIN * Math.exp(I_SPAN * v / 1000);
+const sliderFromInterval = s => Math.round(1000 * Math.log(s / I_MIN) / I_SPAN);
+function fmtInterval(s){ return s >= 1 ? s.toFixed(2)+' 秒' : Math.round(s*1000)+' 毫秒'; }
 async function fetchWithTimeout(url, ms, init){
   const control = new AbortController();
   const t = setTimeout(()=>control.abort(), ms);
   try { return await fetch(url, Object.assign({cache:'no-store', signal: control.signal}, init||{})); }
   finally { clearTimeout(t); }
+}
+function syncControls(){
+  document.getElementById('level').value = String(Math.round(settings.level));
+  document.getElementById('interval').value = String(sliderFromInterval(settings.interval_s));
+  labels();
+}
+function labels(){
+  const level = Number(document.getElementById('level').value);
+  const interval = intervalFromSlider(Number(document.getElementById('interval').value));
+  document.getElementById('levelText').textContent = level + ' / 100';
+  document.getElementById('intervalText').textContent = fmtInterval(interval);
 }
 async function loadStatus(){
   const info = document.getElementById('info');
@@ -231,17 +265,17 @@ async function loadStatus(){
     const s = await (await fetchWithTimeout('api/cameras', 5000)).json();
     status = s; settings = s.settings || settings;
     renderButtons(s.cameras);
-    if(!document.getElementById('width').value) fillWidths();
-    document.getElementById('quality').value = String(settings.jpeg_quality);
-    if(!current){
-      const first = s.cameras.find(c => c.available);
-      if(first){ select(first.name); }
-      else { info.textContent = '当前没有可用的相机流（推流端未上线）'; }
-    }
+    if(!current) syncControls(), connectDefault(s);
+    else labels();
   }catch(e){
     info.textContent = '后台不可达：请确认 SSH 隧道已加 -L 8080:127.0.0.1:8080（' + location.host + '）';
     document.getElementById('cams').innerHTML = '';
   }
+}
+function connectDefault(s){
+  const first = s.cameras.find(c => c.available);
+  if(first){ select(first.name); }
+  else { document.getElementById('info').textContent = '当前没有可用的相机流（推流端未上线）'; }
 }
 function renderButtons(cams){
   const box = document.getElementById('cams'); box.innerHTML='';
@@ -255,24 +289,40 @@ function renderButtons(cams){
     box.appendChild(b);
   }
 }
-async function applySettings(){
-  const width = Number(document.getElementById('width').value);
-  const quality = Number(document.getElementById('quality').value);
-  const interval = Number(document.getElementById('interval').value);
-  try{
-    const r = await fetchWithTimeout('api/settings', 6000,
-      {method:'POST', headers:{'Content-Type':'application/json'},
-       body: JSON.stringify({width:width, jpeg_quality:quality, fps: 1000/interval})});
-    if(!r.ok){ document.getElementById('info').textContent = '设置失败：'+ (await r.text()); return; }
-    settings = (await r.json()).settings;
-    scheduleGrab();
-  }catch(e){ document.getElementById('info').textContent = '设置失败：'+e; }
+let applyTimer = null;
+async function applySettings(immediate){
+  const level = Number(document.getElementById('level').value);
+  const interval_s = intervalFromSlider(Number(document.getElementById('interval').value));
+  const send = async ()=>{
+    try{
+      const r = await fetchWithTimeout('api/settings', 8000,
+        {method:'POST', headers:{'Content-Type':'application/json'},
+         body: JSON.stringify({level:level, interval_s:interval_s})});
+      if(!r.ok){ document.getElementById('info').textContent = '设置失败：'+ (await r.text()); return; }
+      settings = (await r.json()).settings;
+      rate();
+      if(immediate) scheduleGrab();
+    }catch(e){ document.getElementById('info').textContent = '设置失败：'+e; }
+  };
+  if(applyTimer) clearTimeout(applyTimer);
+  if(immediate) return send();
+  applyTimer = setTimeout(send, 350);
+}
+function rate(){
+  const kb = window.lastFrameKb;
+  if(kb){
+    document.getElementById('rate').textContent =
+      settings.width+' px · q'+settings.jpeg_quality+' · 每帧 '+kb+' kB · ≈'+
+      Math.round(kb / settings.interval_s)+' kB/s';
+  } else {
+    document.getElementById('rate').textContent = settings.width+' px · q'+settings.jpeg_quality;
+  }
 }
 async function grab(){
   if(!current) return;
   const started = performance.now();
   try{
-    const r = await fetchWithTimeout('frame?cam='+encodeURIComponent(current)+'&t='+Date.now(), 8000);
+    const r = await fetchWithTimeout('frame?cam='+encodeURIComponent(current)+'&t='+Date.now(), 9000);
     if(!r.ok){ document.getElementById('info').textContent = current+'：'+r.status+' '+(await r.text()); return; }
     const blob = await r.blob();
     const captured = Number(r.headers.get('X-Frame-Time') || 0) * 1000;
@@ -281,25 +331,23 @@ async function grab(){
     const img = document.getElementById('frame');
     const old = img.src; img.src = url;
     if(old.startsWith('blob:')) setTimeout(()=>URL.revokeObjectURL(old), 2000);
+    window.lastFrameKb = Math.round(blob.size/1024*10)/10;
+    rate();
     const capturedText = captured
       ? new Date(captured).toLocaleTimeString('zh-CN', {hour12:false}) : '未知';
     const e2e = captured ? Date.now() - captured : null;
-    const interval = Number(document.getElementById('interval').value);
-    const rate = Math.round(blob.size/1024 * 1000/interval);
-    document.getElementById('rate').textContent =
-      settings.width+'px · q'+settings.jpeg_quality+' · ≈'+rate+' kB/s';
     document.getElementById('info').textContent =
       current+' · 采集 '+capturedText+' · 山猫侧帧龄 '+ageMs+' ms'+
       (e2e !== null && e2e >= 0 && e2e < 60000 ? ' · 端到端 '+e2e+' ms'
         : (e2e !== null ? ' · 端到端不可用（两机时钟不同步）' : ''))+
       ' · 请求 '+Math.round(performance.now()-started)+' ms · '+
-      Math.round(blob.size/1024)+' kB';
+      window.lastFrameKb+' kB';
   }catch(e){ document.getElementById('info').textContent = current+'：'+e; }
 }
 function scheduleGrab(){
   if(timer) clearTimeout(timer);
-  const interval = Number(document.getElementById('interval').value);
-  const tick = async ()=>{ await grab(); if(current) timer = setTimeout(tick, interval); };
+  const interval = settings.interval_s >= 0.1 ? settings.interval_s : 1;
+  const tick = async ()=>{ await grab(); if(current) timer = setTimeout(tick, interval*1000); };
   timer = setTimeout(tick, 0);
 }
 function select(name){
@@ -308,9 +356,11 @@ function select(name){
   renderButtons(status.cameras||[]);
   scheduleGrab();
 }
-for(const id of ['width','quality','interval']){
-  document.getElementById(id).onchange = applySettings;
-}
+document.getElementById('level').oninput = ()=>{ labels();
+  document.getElementById('rate').textContent = '应用新画质…'; };
+document.getElementById('level').onchange = ()=>applySettings(true);
+document.getElementById('interval').oninput = labels;
+document.getElementById('interval').onchange = ()=>applySettings(true);
 loadStatus(); setInterval(loadStatus, 10000);
 </script>"""
 
@@ -355,7 +405,8 @@ class Handler(BaseHTTPRequestHandler):
             deadline = time.monotonic() + 8
             while time.monotonic() < deadline:
                 frame, stamp, wall = camera.snapshot()
-                if frame and time.monotonic() - stamp < 5:
+                # A 5 s cadence produces frames that are legitimately seconds old.
+                if frame and time.monotonic() - stamp < max(5.0, 2.5 / max(0.05, camera.settings.get('fps', 1.0))):
                     age_ms = int((time.monotonic() - stamp) * 1000)
                     self._send(200, frame, 'image/jpeg', extra=(
                         ('X-Frame-Time', '%.3f' % wall),

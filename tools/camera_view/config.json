@@ -1,9 +1,8 @@
 {
   "listen_host": "127.0.0.1",
   "listen_port": 8080,
-  "width": 640,
-  "fps": 1,
-  "jpeg_quality": 8,
+  "level": 55,
+  "interval_s": 1.0,
   "idle_stop_s": 60,
   "probe_interval_s": 30,
   "cameras": {
