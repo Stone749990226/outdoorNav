@@ -68,7 +68,7 @@ def nodes(context):
                     "data_type": "LaserScan",
                     "marking": True,
                     "clearing": True,
-                    "inf_is_valid": False,
+                    "inf_is_valid": True,
                     "obstacle_max_range": 6.0,
                     "raytrace_max_range": 8.0,
                 },

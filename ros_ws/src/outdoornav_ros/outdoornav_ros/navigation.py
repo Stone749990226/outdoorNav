@@ -502,15 +502,38 @@ class Navigation(Node):
         except KeyError:
             return True
 
+    async def wait_for_ready_pose(self, task_id):
+        """Pause the task briefly; never keep sending motion during lost feedback."""
+        timeout = getattr(self, 'config', {}).get('navigation_recovery_timeout_s', 5.0)
+        deadline = time.monotonic() + timeout
+        was_stopping = self.stopping
+        while True:
+            if self.interrupted(task_id):
+                raise InterruptedError('Task canceled or superseded')
+            status = self.status(False)
+            position = self.pose()
+            if (status['ready'] and position is not None
+                    and all(math.isfinite(position[k]) for k in ('x', 'y', 'yaw'))
+                    and 0 <= position.get('age_s', math.inf) < getattr(self, 'config', {}).get('sensor_timeout_s', 1.0)):
+                self.stopping = was_stopping
+                return position
+            self.stopping = True
+            self.command_pub.publish(Twist())
+            health = status.get('health', {})
+            if getattr(self, 'clock_rewound', False) or any(health.get(key) is False for key in (
+                    'exclusive_owners', 'motion_enabled', 'production_mode', 'service_active')):
+                raise RuntimeError('Navigation disabled or ownership/clock conflict; stopped')
+            if time.monotonic() >= deadline:
+                raise RuntimeError('Position or navigation unavailable after %.1f s; stopped' % timeout)
+            await self.pause(0.1)
+
     async def result(self, future, task_id, timeout=10):
         began = self.get_clock().now().nanoseconds / 1e9
         while not future.done():
             if self.interrupted(task_id):
                 raise InterruptedError("Task canceled or superseded")
             if not self.status(False)["ready"]:
-                raise RuntimeError(
-                    "Localization, clock, sensor or Nav2 became unavailable"
-                )
+                await self.wait_for_ready_pose(task_id)
             if self.get_clock().now().nanoseconds / 1e9 - began > timeout:
                 raise RuntimeError("Nav2 action timed out")
             await self.pause()
@@ -659,16 +682,18 @@ class Navigation(Node):
             if self.interrupted(task_id):
                 raise InterruptedError("Task canceled before planning")
             self.tasks.update(task_id, state="planning")
+            position = await self.wait_for_ready_pose(task_id)
             route = plan_route(
                 self.bundle["network"],
-                self.pose(),
+                position,
                 state["goal"],
                 state["blocked_road_ids"],
             )
             await self.prepare_route(route, task_id)
             tolerance = state.get("arrival_tolerance_m") or self.arrival_tolerance
             goal_point = state["goal"]
-            guidance = RouteGuidance(route["reference_path"], self.pose(), goal_point)
+            position = await self.wait_for_ready_pose(task_id)
+            guidance = RouteGuidance(route["reference_path"], position, goal_point)
             self.tasks.update(task_id, reference_path=route["reference_path"])
             current_points, follow_result = [], None
             sent_window = None
@@ -678,12 +703,8 @@ class Navigation(Node):
             while True:
                 if self.interrupted(task_id):
                     raise InterruptedError("Task canceled or superseded")
-                if not self.status(False)["ready"]:
-                    raise RuntimeError(
-                        "Localization, clock, sensor or Nav2 became unavailable"
-                    )
+                position = await self.wait_for_ready_pose(task_id)
                 now = self.get_clock().now().nanoseconds / 1e9
-                position = self.pose()
                 budget.moved(position["x"], position["y"], now)
                 window = guidance.window(position)
                 guidance_changed = window != sent_window
@@ -722,7 +743,7 @@ class Navigation(Node):
                         raise InterruptedError("Task canceled while stopping")
                     if not self.status(False)["ready"]:
                         raise RuntimeError("Localization or sensors lost at arrival")
-                    stopped_pose = self.pose()
+                    stopped_pose = await self.wait_for_ready_pose(task_id)
                     remaining = math.dist(
                         (stopped_pose["x"], stopped_pose["y"]),
                         (goal_point["x"], goal_point["y"]),

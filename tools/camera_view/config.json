@@ -1,0 +1,14 @@
+{
+  "listen_host": "127.0.0.1",
+  "listen_port": 8080,
+  "level": 55,
+  "interval_s": 1.0,
+  "idle_stop_s": 60,
+  "probe_interval_s": 30,
+  "cameras": {
+    "front": "rtsp://10.21.33.103:8554/video4",
+    "back": "rtsp://10.21.33.103:8554/video0",
+    "left": "rtsp://10.21.33.103:8554/video2",
+    "right": "rtsp://10.21.33.103:8554/video6"
+  }
+}

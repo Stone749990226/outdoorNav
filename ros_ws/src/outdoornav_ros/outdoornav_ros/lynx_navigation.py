@@ -20,6 +20,7 @@ from nav2_msgs.action import NavigateToPose
 from outdoornav.api import serve
 from outdoornav.config import load_robot_config
 from outdoornav.diagnostics import readiness_reasons
+from outdoornav.scan_health import healthy_scan
 from outdoornav.places import Places
 from outdoornav.outdoor import OutdoorService
 from outdoornav.tasks import TaskStore, TERMINAL
@@ -79,9 +80,8 @@ class LynxNavigation(Navigation):
             self.guard = {}
 
     def on_scan(self, msg):
-        age = self.get_clock().now().nanoseconds / 1e9 - (
-            msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9)
-        if -0.1 <= age < self.config["sensor_timeout_s"] and any(math.isfinite(r) and msg.range_min < r < msg.range_max for r in msg.ranges):
+        now_s = self.get_clock().now().nanoseconds / 1e9
+        if healthy_scan(msg, now_s, self.config['sensor_timeout_s']):
             self.mark('lidar')
 
     def status(self, include_task=True):
@@ -125,6 +125,7 @@ class LynxNavigation(Navigation):
                 'localization_mode':config['localization_mode'],
                 'odometry_source': 'rtk_doppler+wit_imu' if config['localization_mode'] == 'rtk_imu' else (config.get('odom_topic') or None),
                 'feedback':geo.get('feedback'),'velocity_source':geo.get('velocity_source'),
+                'command_status': dict(self.guard),
                 'tf_conflicts': geo.get('tf_conflicts', {}),
                 'command_topic': self.resolve_topic_name('/outdoor/diagnostic_cmd_vel' if self.diagnostic else '/cmd_vel'),
                 'not_ready_reasons': readiness_reasons(health, geo),

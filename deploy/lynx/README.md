@@ -119,6 +119,9 @@ source /opt/ros/humble/setup.bash
 
 ## 配置和定位
 
+室外复盘的离线修复说明见 [2026-10-28 修复记录](../../docs/fieldtest-fixes-2026-10-28.md)。
+现场演示档 `robot.fieldtest.json` 显式关闭 GGA 改正年龄门槛；通用／默认配置仍保留该门槛，其他定位质量检查不变。
+
 `deploy/lynx/robot.json` 只保存部署值，通用默认值集中在 `outdoornav/config.py`：
 
 - **不使用 `/ODOM`。**`odom_topic` 默认留空，诊断服务不订阅该话题，配置加载也拒绝将它设为定位源。
@@ -177,6 +180,8 @@ curl -s -X POST -H 'Content-Type: application/json' -d '{"active":true}' http://
 `scan_range_min_m=1.2` 用于剔除前雷达 1.2 m 内的自车腿部回波，否则 DWB 所有轨迹都判碰撞。
 
 ## 网页和客户端
+
+远程看车状态用相机网页工具，说明见 [相机网页](../../docs/camera-view.md)。
 
 启动后访问 **http://10.29.1.4:8765/**，无需电脑运行 Vite 或 SSH 转发。
 网页静态文件与 `/api/*` 同源，默认监听 `0.0.0.0:8765`。

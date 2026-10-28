@@ -56,9 +56,13 @@ def fix_grade(fix, config=None):
     if not fix:
         return None
     age, hacc = fix.get('correction_age_s'), fix.get('hacc_m')
+    age_ok = (isinstance(age, (int, float)) and not isinstance(age, bool)
+              and math.isfinite(age) and 0 <= age <= config['correction_max_age_s'])
+    # Explicit demo policy only: GGA age remains visible, but is not treated as
+    # a reliable measure of current RTCM delivery. Fresh epochs, solution flags
+    # and Doppler quality are still checked by the localization consumer.
     if not (fix.get('valid') and fix.get('differential')
-            and isinstance(age, (int, float)) and math.isfinite(age)
-            and 0 <= age <= config['correction_max_age_s']
+            and (age_ok or not config['require_correction_age'])
             and isinstance(hacc, (int, float)) and math.isfinite(hacc) and hacc > 0
             and -90 <= fix.get('latitude', math.inf) <= 90
             and -180 <= fix.get('longitude', math.inf) <= 180):
