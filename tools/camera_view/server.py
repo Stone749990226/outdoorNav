@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""One JPEG per second from a robot camera, served to a browser over a tunnel.
+"""One JPEG per tick from a robot camera, served to a browser over a tunnel.
 
-Only the selected camera runs ffmpeg, at 1 fps and 640 px wide, so the tunnel
-carries roughly 20-40 kB/s. Streams are probed at startup and every
-`probe_interval_s`; cameras that are not publishing are shown as unavailable.
+Only the selected camera runs ffmpeg. Resolution, quality and update interval
+are adjustable from the page (or the config file) to trade picture for
+bandwidth; the default 640 px / 1 Hz costs roughly 20-40 kB/s.
 """
 
 import argparse
@@ -15,11 +15,14 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parent
+LIMITS = {
+    'width': (160, 1920),
+    'fps': (0.2, 10.0),
+    'jpeg_quality': (2, 31),
+}
 
 
 class Camera:
-    """Runs one ffmpeg MJPEG pipeline per active camera; keeps only the last frame."""
-
     def __init__(self, name, url, settings):
         self.name, self.url, self.settings = name, url, settings
         self.lock = threading.Lock()
@@ -30,16 +33,14 @@ class Camera:
         self.error = None
         self.process = None
         self.available = None
-        self.probed_at = 0.0
+        self.restart = False
         self.thread = None
 
     def probe(self):
-        """Cheap availability check: does the stream answer DESCRIBE?"""
         import subprocess
         command = ['ffprobe', '-v', 'error', '-rtsp_transport', 'tcp',
                    '-select_streams', 'v:0', '-show_entries', 'stream=width,height',
                    '-of', 'csv=p=0', self.url]
-        self.probed_at = time.monotonic()
         try:
             result = subprocess.run(command, capture_output=True, text=True, timeout=8)
             self.available = result.returncode == 0 and bool(result.stdout.strip())
@@ -50,6 +51,7 @@ class Camera:
     def start(self):
         if self.thread is not None and self.thread.is_alive():
             return
+        self.restart = False
         self.thread = threading.Thread(target=self._run, name='camera-' + self.name, daemon=True)
         self.thread.start()
 
@@ -75,16 +77,22 @@ class Camera:
                 except Exception:
                     pass
 
+    def restart_pipeline(self):
+        """Apply new settings by ending the current ffmpeg; the next view respawns it."""
+        self.restart = True
+        self.stop()
+        with self.lock:
+            self.frame = None
+            self.frame_at = 0.0
+
     def _run(self):
         import subprocess
-        command = ['ffmpeg', '-nostdin', '-loglevel', 'error', '-rtsp_transport', 'tcp',
-                   '-i', self.url, '-an',
-                   '-vf', 'fps=%d,scale=%d:-2' % (self.settings['fps'], self.settings['width']),
-                   '-q:v', str(self.settings['jpeg_quality']), '-f', 'mjpeg', 'pipe:1']
-        while True:
-            if self.idle():
-                break
+        while not (self.idle() or self.restart):
             self.error = None
+            command = ['ffmpeg', '-nostdin', '-loglevel', 'error', '-rtsp_transport', 'tcp',
+                       '-i', self.url, '-an',
+                       '-vf', 'fps=%g,scale=%d:-2' % (self.settings['fps'], self.settings['width']),
+                       '-q:v', str(self.settings['jpeg_quality']), '-f', 'mjpeg', 'pipe:1']
             try:
                 self.process = subprocess.Popen(command, stdout=subprocess.PIPE,
                                                 stderr=subprocess.PIPE, bufsize=0)
@@ -95,7 +103,7 @@ class Camera:
             buffer = b''
             try:
                 stream = self.process.stdout
-                while True:
+                while not self.restart:
                     chunk = stream.read(4096)
                     if not chunk:
                         break
@@ -111,11 +119,11 @@ class Camera:
                         with self.lock:
                             self.frame, self.frame_at = frame, time.monotonic()
                             self.frame_wall = time.time()
-            except Exception as error:  # keep the service alive; the page shows the error
+            except Exception as error:
                 self.error = str(error)
             finally:
                 self.stop()
-            if self.idle():
+            if self.restart or self.idle():
                 break
             self.error = self.error or 'stream ended; retrying'
             time.sleep(2)
@@ -127,10 +135,8 @@ class Camera:
 class Service:
     def __init__(self, config):
         self.config = config
-        self.cameras = {
-            name: Camera(name, url, config) for name, url in config['cameras'].items()
-        }
-        self.lock = threading.Lock()
+        self.cameras = {name: Camera(name, url, config)
+                        for name, url in config['cameras'].items()}
         threading.Thread(target=self._probe_loop, daemon=True).start()
 
     def _probe_loop(self):
@@ -143,8 +149,30 @@ class Service:
     def camera(self, name):
         return self.cameras.get(name)
 
+    def settings(self):
+        return {key: self.config[key] for key in LIMITS}
+
+    def update_settings(self, values):
+        changes = {}
+        for key, (low, high) in LIMITS.items():
+            if key not in values:
+                continue
+            value = values[key]
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(key + ' must be a number')
+            if not low <= value <= high:
+                raise ValueError('%s must be %g..%g' % (key, low, high))
+            changes[key] = float(value) if key != 'jpeg_quality' else int(value)
+        if not changes:
+            raise ValueError('no recognised settings; expected ' + ', '.join(LIMITS))
+        self.config.update(changes)
+        for camera in self.cameras.values():
+            camera.restart_pipeline()
+        return {'settings': self.settings()}
+
     def status(self):
         return {
+            'settings': self.settings(),
             'cameras': [
                 {'name': camera.name, 'url': camera.url, 'available': camera.available,
                  'running': bool(camera.thread and camera.thread.is_alive()),
@@ -152,7 +180,7 @@ class Service:
                  'frame_time': round(camera.frame_wall, 3) if camera.frame_wall else None,
                  'error': camera.error}
                 for camera in self.cameras.values()
-            ]
+            ],
         }
 
 
@@ -160,28 +188,51 @@ HTML = """<!doctype html><meta charset="utf-8"><title>山猫相机</title>
 <style>
  body{font-family:system-ui,sans-serif;margin:0;background:#111;color:#eee}
  header{padding:10px 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#1b1b1b}
+ .controls{padding:8px 14px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;background:#161616;font-size:13px}
  button{padding:6px 14px;border:1px solid #444;background:#222;color:#eee;border-radius:6px;cursor:pointer}
  button.active{background:#2b6cb0;border-color:#2b6cb0}
  button:disabled{opacity:.35;cursor:not-allowed}
- img{display:block;width:100%;max-width:1024px;margin:10px auto;background:#000;min-height:200px}
+ select{background:#222;color:#eee;border:1px solid #444;border-radius:6px;padding:4px 6px}
+ img{display:block;width:100%;max-width:1280px;margin:10px auto;background:#000;min-height:200px}
  small{opacity:.75}
 </style>
 <header><strong>山猫相机</strong><span id="cams"></span><small id="info">连接中…</small></header>
+<div class="controls">
+  <label>宽度 <select id="width"></select></label>
+  <label>画质 <select id="quality">
+    <option value="3">高（大）</option><option value="6">中</option>
+    <option value="8">省流（默认）</option><option value="12">很省流</option>
+  </select></label>
+  <label>更新间隔 <select id="interval">
+    <option value="500">0.5 秒</option><option value="1000" selected>1 秒</option>
+    <option value="2000">2 秒</option><option value="5000">5 秒</option>
+  </select></label>
+  <small id="rate"></small>
+</div>
 <img id="frame" alt="camera">
 <script>
-let current = null, timer = null, status = {};
-async function fetchWithTimeout(url, ms){
+let current = null, timer = null, status = {}, settings = {width:640, fps:1, jpeg_quality:8};
+const widths = [320, 480, 640, 960, 1280];
+function fillWidths(){
+  const box = document.getElementById('width');
+  box.innerHTML='';
+  for(const w of widths){ const o=document.createElement('option'); o.value=w; o.textContent=w+' px'; box.appendChild(o); }
+  box.value = String(settings.width || 640);
+}
+async function fetchWithTimeout(url, ms, init){
   const control = new AbortController();
-  const timer = setTimeout(()=>control.abort(), ms);
-  try { return await fetch(url, {cache:'no-store', signal: control.signal}); }
-  finally { clearTimeout(timer); }
+  const t = setTimeout(()=>control.abort(), ms);
+  try { return await fetch(url, Object.assign({cache:'no-store', signal: control.signal}, init||{})); }
+  finally { clearTimeout(t); }
 }
 async function loadStatus(){
   const info = document.getElementById('info');
   try{
-    const r = await fetchWithTimeout('api/cameras', 5000);
-    const s = await r.json();
-    status = s; renderButtons(s.cameras);
+    const s = await (await fetchWithTimeout('api/cameras', 5000)).json();
+    status = s; settings = s.settings || settings;
+    renderButtons(s.cameras);
+    if(!document.getElementById('width').value) fillWidths();
+    document.getElementById('quality').value = String(settings.jpeg_quality);
     if(!current){
       const first = s.cameras.find(c => c.available);
       if(first){ select(first.name); }
@@ -204,6 +255,19 @@ function renderButtons(cams){
     box.appendChild(b);
   }
 }
+async function applySettings(){
+  const width = Number(document.getElementById('width').value);
+  const quality = Number(document.getElementById('quality').value);
+  const interval = Number(document.getElementById('interval').value);
+  try{
+    const r = await fetchWithTimeout('api/settings', 6000,
+      {method:'POST', headers:{'Content-Type':'application/json'},
+       body: JSON.stringify({width:width, jpeg_quality:quality, fps: 1000/interval})});
+    if(!r.ok){ document.getElementById('info').textContent = '设置失败：'+ (await r.text()); return; }
+    settings = (await r.json()).settings;
+    scheduleGrab();
+  }catch(e){ document.getElementById('info').textContent = '设置失败：'+e; }
+}
 async function grab(){
   if(!current) return;
   const started = performance.now();
@@ -218,31 +282,41 @@ async function grab(){
     const old = img.src; img.src = url;
     if(old.startsWith('blob:')) setTimeout(()=>URL.revokeObjectURL(old), 2000);
     const capturedText = captured
-      ? new Date(captured).toLocaleTimeString('zh-CN', {hour12:false})
-      : '未知';
-    const e2e = captured ? Math.max(0, Date.now() - captured) : null;
+      ? new Date(captured).toLocaleTimeString('zh-CN', {hour12:false}) : '未知';
+    const e2e = captured ? Date.now() - captured : null;
+    const interval = Number(document.getElementById('interval').value);
+    const rate = Math.round(blob.size/1024 * 1000/interval);
+    document.getElementById('rate').textContent =
+      settings.width+'px · q'+settings.jpeg_quality+' · ≈'+rate+' kB/s';
     document.getElementById('info').textContent =
-      current+' · 采集 '+capturedText+
-      ' · 山猫侧帧龄 '+ageMs+' ms'+
-      (e2e !== null && e2e < 60000 ? ' · 端到端 '+e2e+' ms'
+      current+' · 采集 '+capturedText+' · 山猫侧帧龄 '+ageMs+' ms'+
+      (e2e !== null && e2e >= 0 && e2e < 60000 ? ' · 端到端 '+e2e+' ms'
         : (e2e !== null ? ' · 端到端不可用（两机时钟不同步）' : ''))+
       ' · 请求 '+Math.round(performance.now()-started)+' ms · '+
-      Math.round(blob.size/1024)+' kB · 本机 '+new Date().toLocaleTimeString('zh-CN',{hour12:false});
+      Math.round(blob.size/1024)+' kB';
   }catch(e){ document.getElementById('info').textContent = current+'：'+e; }
+}
+function scheduleGrab(){
+  if(timer) clearTimeout(timer);
+  const interval = Number(document.getElementById('interval').value);
+  const tick = async ()=>{ await grab(); if(current) timer = setTimeout(tick, interval); };
+  timer = setTimeout(tick, 0);
 }
 function select(name){
   current = name;
   document.getElementById('info').textContent = name+' 加载中…';
   renderButtons(status.cameras||[]);
-  if(timer) clearInterval(timer);
-  grab(); timer = setInterval(grab, 1000);
+  scheduleGrab();
+}
+for(const id of ['width','quality','interval']){
+  document.getElementById(id).onchange = applySettings;
 }
 loadStatus(); setInterval(loadStatus, 10000);
 </script>"""
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = 'lynx-camera/1.0'
+    server_version = 'lynx-camera/1.1'
     service = None
 
     def log_message(self, *_):
@@ -266,6 +340,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == '/api/cameras':
             self._send(200, json.dumps(self.service.status()).encode())
             return
+        if parsed.path == '/api/settings':
+            self._send(200, json.dumps({'settings': self.service.settings()}).encode())
+            return
         if parsed.path == '/frame':
             name = parse_qs(parsed.query).get('cam', [''])[0]
             camera = self.service.camera(name)
@@ -275,7 +352,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(503, b'camera not publishing', 'text/plain'); return
             camera.touch()
             camera.start()
-            deadline = time.monotonic() + 6
+            deadline = time.monotonic() + 8
             while time.monotonic() < deadline:
                 frame, stamp, wall = camera.snapshot()
                 if frame and time.monotonic() - stamp < 5:
@@ -289,17 +366,29 @@ class Handler(BaseHTTPRequestHandler):
             self._send(504, (camera.error or 'no frame yet').encode(), 'text/plain'); return
         self._send(404, b'not found', 'text/plain')
 
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        if parsed.path != '/api/settings':
+            self._send(404, b'not found', 'text/plain'); return
+        try:
+            length = int(self.headers.get('Content-Length', '0'))
+            values = json.loads(self.rfile.read(length) or b'{}')
+            result = self.service.update_settings(values)
+        except (ValueError, TypeError) as error:
+            self._send(400, str(error).encode(), 'text/plain'); return
+        self._send(200, json.dumps(result).encode())
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', default=str(ROOT / 'config.json'))
     args = parser.parse_args()
     config = json.loads(Path(args.config).read_text())
+    config.setdefault('jpeg_quality', 8)
     service = Service(config)
     Handler.service = service
     server = ThreadingHTTPServer((config['listen_host'], config['listen_port']), Handler)
-    print('camera view on http://%s:%d (tunnel 8080 -> this port)' % (
-        config['listen_host'], config['listen_port']), flush=True)
+    print('camera view on http://%s:%d' % (config['listen_host'], config['listen_port']), flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
