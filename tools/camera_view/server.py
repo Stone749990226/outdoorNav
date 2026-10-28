@@ -179,7 +179,11 @@ async function loadStatus(){
     const r = await fetchWithTimeout('api/cameras', 5000);
     const s = await r.json();
     status = s; renderButtons(s.cameras);
-    if(!current) info.textContent = '选择上方相机（未选时不拉流，不占带宽）';
+    if(!current){
+      const first = s.cameras.find(c => c.available);
+      if(first){ select(first.name); }
+      else { info.textContent = '当前没有可用的相机流（推流端未上线）'; }
+    }
   }catch(e){
     info.textContent = '后台不可达：请确认 SSH 隧道已加 -L 8080:127.0.0.1:8080（' + location.host + '）';
     document.getElementById('cams').innerHTML = '';
