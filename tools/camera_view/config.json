@@ -6,9 +6,9 @@
   "idle_stop_s": 60,
   "probe_interval_s": 30,
   "cameras": {
+    "front": "rtsp://10.21.33.103:8554/video4",
+    "back": "rtsp://10.21.33.103:8554/video0",
     "left": "rtsp://10.21.33.103:8554/video2",
-    "cam0": "rtsp://10.21.33.103:8554/video0",
-    "cam4": "rtsp://10.21.33.103:8554/video4",
-    "cam6": "rtsp://10.21.33.103:8554/video6"
+    "right": "rtsp://10.21.33.103:8554/video6"
   }
 }

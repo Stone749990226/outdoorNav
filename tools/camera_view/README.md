@@ -26,13 +26,13 @@ ssh -p 6003 -N -L 8080:127.0.0.1:8080 nvidia@svr.gddg08.top
 
 | 名字 | 地址 |
 | --- | --- |
+| front | rtsp://10.21.33.103:8554/video4 |
+| back | rtsp://10.21.33.103:8554/video0 |
 | left | rtsp://10.21.33.103:8554/video2 |
-| cam0 | rtsp://10.21.33.103:8554/video0 |
-| cam4 | rtsp://10.21.33.103:8554/video4 |
-| cam6 | rtsp://10.21.33.103:8554/video6 |
+| right | rtsp://10.21.33.103:8554/video6 |
 
-（现场确认：`video2` 是**左侧**相机；其余三路方向待核对，暂以 `cam0/cam4/cam6` 命名。
-**注意**：这四路只在遥控器 App 打开视频界面时才推流，App 关掉后全部 404。确认方向后可改名 `front/back/right`。）
+（现场确认：front=video4、back=video0、left=video2、right=video6。
+**注意**：这四路只在遥控器 App 打开视频界面时才推流，App 关掉后全部 404。）
 
 页面上两个滑杆：**画质/带宽**（0–100，内部映射 240–1280 px 与 `-q:v` 28–5 的组合）和**更新间隔**（0.1–5 秒，对数刻度）。
 `config.json` 里对应 `level` 与 `interval_s`，也可直接改文件后重启服务。
