@@ -177,7 +177,7 @@ curl -s -X POST -H 'Content-Type: application/json' -d '{"active":true}' http://
 
 网页端口 8766。真实模式仍用 `start_production.sh`（端口 8765、真实 `/cmd_vel`＋`cmd_vel_bridge.py` 转发到 `/NAV_CMD`）。
 演示配置 `deploy/lynx/robot.fieldtest.json`（真实）与 `robot.mock.json`（模拟）记录了三米档、安装矩阵、以及**未实测项**（天线杆臂、磁偏角、航向绝对精度）；
-`scan_range_min_m=1.2` 用于剔除前雷达 1.2 m 内的自车腿部回波，否则 DWB 所有轨迹都判碰撞。
+`scan_range_min_m=3.0`（真实演示档）用于剔除前雷达 3 m 内的自车腿部回波（行走时前腿摆过 1.2 m，1.2 m 过滤会让 DWB 所有轨迹都判碰撞）；mock 档保持 1.2。
 
 ## 网页和客户端
 

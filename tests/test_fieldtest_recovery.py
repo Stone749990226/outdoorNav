@@ -183,7 +183,7 @@ def test_generated_costmap_clears_inf_rays_without_increasing_near_blind_zone(tm
     for name in ('global_costmap', 'local_costmap'):
         assert params[name][name]['ros__parameters']['obstacle_layer']['scan']['inf_is_valid'] is True
     from outdoornav.config import load_robot_config
-    assert load_robot_config(values['robot_config'])['scan_range_min_m'] == 1.2
+    assert load_robot_config(values['robot_config'])['scan_range_min_m'] == 3.0
 
 
 @pytest.mark.parametrize('age', [None, 39., 120.])

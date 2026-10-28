@@ -74,5 +74,6 @@
   "_mock_note": "Indoor mock mode: NAV-PVT/GGA produced by deploy/lynx/mock_virtual_base.py in the real receiver format; command outputs remapped to /mock_base/cmd_vel and integrated by a virtual base. No real /cmd_vel publisher and no chassis bridge in this mode. scan_range_min_m=1.2 ignores the front lidar self/leg returns below 1.2 m that otherwise block every DWB trajectory. obstacle_layer disabled in mock mode: indoor surroundings are not the mapped scene; the outdoor profile keeps it enabled.",
   "scan_range_min_m": 1.2,
   "obstacle_layer_enabled": false,
-  "local_track_unknown": false
+  "local_track_unknown": false,
+  "require_correction_age": false
 }
