@@ -11,8 +11,10 @@ DEFAULTS = {
     'gnss_float_hacc_m': 1.0,
     'gnss_stable_s': 5.0,
     'correction_max_age_s': 5.0,
+    'require_correction_age': True,
     'sensor_timeout_s': 1.0,
     'command_timeout_s': 0.3,
+    'navigation_recovery_timeout_s': 5.0,
     'fixed_arrival_m': 0.5,
     'float_arrival_m': 1.5,
     'gnss_speed_accuracy_mps': 0.10,
@@ -40,6 +42,9 @@ def load_robot_config(path):
         if type(config.get(key)) is not bool:
             raise ValueError(key + ' must be an explicit boolean')
     boolean_defaults = {key for key in DEFAULTS if type(DEFAULTS[key]) is bool}
+    for key in boolean_defaults:
+        if type(config[key]) is not bool:
+            raise ValueError(key + ' must be an explicit boolean')
     for key in (*DEFAULTS, 'initial_heading_rad', 'footprint_radius_m',
                 'cloud_min_height_m', 'cloud_max_height_m'):
         if key in boolean_defaults:

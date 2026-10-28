@@ -6,6 +6,7 @@ import time
 import signal
 from rclpy.signals import SignalHandlerOptions
 from outdoornav.config import load_robot_config
+from outdoornav.scan_health import healthy_scan
 
 import rclpy
 from geometry_msgs.msg import Twist
@@ -61,28 +62,24 @@ class Watchdog(Node):
             self.ready = False
 
     def scan(self, msg):
-        age = (
-            self.get_clock().now().nanoseconds / 1e9
-            - msg.header.stamp.sec
-            - msg.header.stamp.nanosec / 1e9
-        )
-        if -0.1 <= age < self.config["sensor_timeout_s"] and any(
-            math.isfinite(r) and msg.range_min < r < msg.range_max for r in msg.ranges
-        ):
+        now_s = self.get_clock().now().nanoseconds / 1e9
+        if healthy_scan(msg, now_s, self.config['sensor_timeout_s']):
             self.scan_at = time.monotonic()
 
     def tick(self):
         now = time.monotonic()
         output = Twist()
-        if (
-            not self.conflict
-            and not self.diagnostic
-            and self.config["motion_enabled"]
-            and self.ready
-            and now - self.geo_at < self.config["sensor_timeout_s"]
-            and now - self.scan_at < self.config["sensor_timeout_s"]
-            and now - self.command_at < self.config["command_timeout_s"]
-        ):
+        checks = {
+            'output_conflict': not self.conflict,
+            'diagnostic_mode': not self.diagnostic,
+            'motion_disabled': self.config['motion_enabled'],
+            'localization_unready': self.ready,
+            'localization_stale': now - self.geo_at < self.config['sensor_timeout_s'],
+            'scan_stale': now - self.scan_at < self.config['sensor_timeout_s'],
+            'command_stale': now - self.command_at < self.config['command_timeout_s'],
+        }
+        blockers = [reason for reason, passed in checks.items() if not passed]
+        if not blockers:
             x, y, z = (
                 self.command.linear.x,
                 self.command.linear.y,
@@ -92,9 +89,12 @@ class Watchdog(Node):
                 # No reverse or lateral motion until rear coverage is validated.
                 output.linear.x = max(0.0, min(self.config["max_speed_mps"], x))
                 output.angular.z = max(-self.config["max_angular_speed_rps"], min(self.config["max_angular_speed_rps"], z))
+            else:
+                blockers.append('nonfinite_command')
         self.pub.publish(output)
         self.status_pub.publish(String(data=json.dumps({'conflict': self.conflict,
-            'diagnostic': self.diagnostic, 'output_topic': self.pub.topic_name})))
+            'diagnostic': self.diagnostic, 'output_topic': self.pub.topic_name,
+            'blocked_reasons': blockers})))
 
     def destroy_node(self):
         if rclpy.ok():

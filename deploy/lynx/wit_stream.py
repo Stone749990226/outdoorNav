@@ -40,12 +40,16 @@ def main():
             drain_until = time.monotonic()+0.3
             while time.monotonic() < drain_until:
                 serial.read(timeout=0.05)
-            queried = time.monotonic()
+            started = queried = time.monotonic()
             serial.query_imu_algorithm()
             mode = None
             print('WIT input: %s -> localhost:%d; READADDR query only, no settings' %
                   (serial.port, cfg['udp_port']), flush=True)
-            while not stopping and (args.duration is None or time.monotonic()-queried < args.duration):
+            while not stopping and (args.duration is None or time.monotonic()-started < args.duration):
+                now = time.monotonic()
+                if mode is None and now-queried >= 5.0:
+                    serial.query_imu_algorithm()
+                    queried = now
                 raw = serial.read()
                 if not raw:
                     continue

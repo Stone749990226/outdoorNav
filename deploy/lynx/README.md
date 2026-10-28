@@ -119,6 +119,9 @@ source /opt/ros/humble/setup.bash
 
 ## 配置和定位
 
+室外复盘的离线修复说明见 [2026-10-28 修复记录](../../docs/fieldtest-fixes-2026-10-28.md)。
+现场演示档 `robot.fieldtest.json` 显式关闭 GGA 改正年龄门槛；通用／默认配置仍保留该门槛，其他定位质量检查不变。
+
 `deploy/lynx/robot.json` 只保存部署值，通用默认值集中在 `outdoornav/config.py`：
 
 - **不使用 `/ODOM`。**`odom_topic` 默认留空，诊断服务不订阅该话题，配置加载也拒绝将它设为定位源。
