@@ -178,6 +178,8 @@ curl -s -X POST -H 'Content-Type: application/json' -d '{"active":true}' http://
 
 ## 网页和客户端
 
+远程看车状态用相机网页工具，说明见 [相机网页](../../docs/camera-view.md)。
+
 启动后访问 **http://10.29.1.4:8765/**，无需电脑运行 Vite 或 SSH 转发。
 网页静态文件与 `/api/*` 同源，默认监听 `0.0.0.0:8765`。
 
