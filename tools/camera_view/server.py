@@ -63,6 +63,8 @@ class Camera:
     def start(self):
         if self.thread is not None and self.thread.is_alive():
             return
+        if self.process is not None and self.process.poll() is None:
+            self.stop()          # never run two pipelines for one camera
         self.restart = False
         self.thread = threading.Thread(target=self._run, name='camera-' + self.name, daemon=True)
         self.thread.start()
@@ -93,6 +95,10 @@ class Camera:
         """Apply new settings by ending the current ffmpeg; the next view respawns it."""
         self.restart = True
         self.stop()
+        thread = self.thread
+        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=1.5)
+        self.thread = None
         with self.lock:
             self.frame = None
             self.frame_at = 0.0
