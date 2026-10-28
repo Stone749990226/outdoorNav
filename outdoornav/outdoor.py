@@ -8,6 +8,12 @@ from .api import ApiError
 from .routing import plan_route, snap, validate_point
 from .config import DEFAULTS
 
+# An off-road robot start is accepted up to this distance from the surveyed
+# network: NavFn legs are planned from the robot's true position, so the first
+# leg brings it straight back to the nearest road. Farther starts are refused
+# to avoid long unobserved dashes across unvalidated terrain.
+START_RESCUE_DISTANCE_M = 20
+
 
 class OutdoorService:
     def __init__(self, bundle, places, tasks, status, config=None):
@@ -61,8 +67,10 @@ class OutdoorService:
         position = self.status(False)['pose']
         if position is None or not 0 <= position.get('age_s', math.inf) < self.config['sensor_timeout_s']:
             raise ApiError(503, 'No fresh robot position for planning')
-        if snap(self.bundle['network'], position)['distance_m'] > 2:
-            raise ValueError('Robot is outside the surveyed road network')
+        if snap(self.bundle['network'], position)['distance_m'] > START_RESCUE_DISTANCE_M:
+            raise ValueError(
+                f'Robot is more than {START_RESCUE_DISTANCE_M:.0f} m from the surveyed road network'
+            )
         return goal, blocked, plan_route(self.bundle['network'], position, goal, blocked)
 
     def submit(self, payload):

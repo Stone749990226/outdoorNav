@@ -280,6 +280,30 @@ def test_road_point_projection_closures_and_task_policy_are_durable(tmp_path):
         service.preview({**body, 'blocked_road_ids': ['unknown']})
 
 
+def test_offroad_start_within_20_m_is_rescued_but_farther_is_refused():
+    bundle = load_bundle()
+    a, b = bundle['network']['roads'][0]['points'][:2]
+    dx, dy = b['x'] - a['x'], b['y'] - a['y']
+    length = (dx * dx + dy * dy) ** 0.5
+    # A start 10 m perpendicular off the road is snapped back by the first leg.
+    offroad = {'x': a['x'] + 10 * dy / length, 'y': a['y'] - 10 * dx / length}
+    state = {'ready': True, 'localization_grade': 'fixed',
+             'pose': {**offroad, 'age_s': 0}}
+    service = OutdoorService(bundle, None, TaskStore(),
+                             lambda *_: state)
+    body = {'frame_id': 'map', 'scene_version': bundle['scene_version'],
+            'route_version': bundle['route_version'], 'goal': b}
+    route = service.preview(body)
+    assert route['start'] == pytest.approx({'x': a['x'], 'y': a['y']})
+    assert route['goal'] == pytest.approx({'x': b['x'], 'y': b['y']})
+    assert route['length_m'] > 0
+    # The same request from far away stays refused.
+    state['pose'] = {'x': a['x'] + 100 * dy / length, 'y': a['y'] - 100 * dx / length,
+                     'age_s': 0}
+    with pytest.raises(ValueError, match='20 m'):
+        service.preview(body)
+
+
 def test_web_assets_and_api_are_same_origin_and_cannot_escape(tmp_path):
     from urllib.error import HTTPError
     web = tmp_path / 'web'
