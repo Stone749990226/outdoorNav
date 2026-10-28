@@ -25,6 +25,7 @@ class Camera:
         self.lock = threading.Lock()
         self.frame = None
         self.frame_at = 0.0
+        self.frame_wall = 0.0
         self.last_view = 0.0
         self.error = None
         self.process = None
@@ -60,7 +61,7 @@ class Camera:
 
     def snapshot(self):
         with self.lock:
-            return self.frame, self.frame_at
+            return self.frame, self.frame_at, self.frame_wall
 
     def stop(self):
         process, self.process = self.process, None
@@ -109,6 +110,7 @@ class Camera:
                         buffer = buffer[end + 2:]
                         with self.lock:
                             self.frame, self.frame_at = frame, time.monotonic()
+                            self.frame_wall = time.time()
             except Exception as error:  # keep the service alive; the page shows the error
                 self.error = str(error)
             finally:
@@ -147,6 +149,7 @@ class Service:
                 {'name': camera.name, 'url': camera.url, 'available': camera.available,
                  'running': bool(camera.thread and camera.thread.is_alive()),
                  'age_s': round(time.monotonic() - camera.frame_at, 2) if camera.frame_at else None,
+                 'frame_time': round(camera.frame_wall, 3) if camera.frame_wall else None,
                  'error': camera.error}
                 for camera in self.cameras.values()
             ]
@@ -208,13 +211,23 @@ async function grab(){
     const r = await fetchWithTimeout('frame?cam='+encodeURIComponent(current)+'&t='+Date.now(), 8000);
     if(!r.ok){ document.getElementById('info').textContent = current+'：'+r.status+' '+(await r.text()); return; }
     const blob = await r.blob();
+    const captured = Number(r.headers.get('X-Frame-Time') || 0) * 1000;
+    const ageMs = Number(r.headers.get('X-Frame-Age-Ms') || 0);
     const url = URL.createObjectURL(blob);
     const img = document.getElementById('frame');
     const old = img.src; img.src = url;
     if(old.startsWith('blob:')) setTimeout(()=>URL.revokeObjectURL(old), 2000);
+    const capturedText = captured
+      ? new Date(captured).toLocaleTimeString('zh-CN', {hour12:false})
+      : '未知';
+    const e2e = captured ? Math.max(0, Date.now() - captured) : null;
     document.getElementById('info').textContent =
-      current+' · '+Math.round(blob.size/1024)+' kB · '+
-      Math.round(performance.now()-started)+' ms · '+new Date().toLocaleTimeString();
+      current+' · 采集 '+capturedText+
+      ' · 山猫侧帧龄 '+ageMs+' ms'+
+      (e2e !== null && e2e < 60000 ? ' · 端到端 '+e2e+' ms'
+        : (e2e !== null ? ' · 端到端不可用（两机时钟不同步）' : ''))+
+      ' · 请求 '+Math.round(performance.now()-started)+' ms · '+
+      Math.round(blob.size/1024)+' kB · 本机 '+new Date().toLocaleTimeString('zh-CN',{hour12:false});
   }catch(e){ document.getElementById('info').textContent = current+'：'+e; }
 }
 function select(name){
@@ -235,11 +248,13 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_):
         pass
 
-    def _send(self, code, body, content_type='application/json'):
+    def _send(self, code, body, content_type='application/json', extra=()):
         self.send_response(code)
         self.send_header('Content-Type', content_type)
         self.send_header('Content-Length', str(len(body)))
         self.send_header('Cache-Control', 'no-store')
+        for name, value in extra:
+            self.send_header(name, str(value))
         self.end_headers()
         self.wfile.write(body)
 
@@ -262,9 +277,14 @@ class Handler(BaseHTTPRequestHandler):
             camera.start()
             deadline = time.monotonic() + 6
             while time.monotonic() < deadline:
-                frame, stamp = camera.snapshot()
+                frame, stamp, wall = camera.snapshot()
                 if frame and time.monotonic() - stamp < 5:
-                    self._send(200, frame, 'image/jpeg'); return
+                    age_ms = int((time.monotonic() - stamp) * 1000)
+                    self._send(200, frame, 'image/jpeg', extra=(
+                        ('X-Frame-Time', '%.3f' % wall),
+                        ('X-Frame-Age-Ms', age_ms),
+                        ('X-Camera', camera.name)))
+                    return
                 time.sleep(0.1)
             self._send(504, (camera.error or 'no frame yet').encode(), 'text/plain'); return
         self._send(404, b'not found', 'text/plain')
