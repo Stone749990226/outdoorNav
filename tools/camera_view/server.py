@@ -167,11 +167,23 @@ HTML = """<!doctype html><meta charset="utf-8"><title>山猫相机</title>
 <img id="frame" alt="camera">
 <script>
 let current = null, timer = null, status = {};
+async function fetchWithTimeout(url, ms){
+  const control = new AbortController();
+  const timer = setTimeout(()=>control.abort(), ms);
+  try { return await fetch(url, {cache:'no-store', signal: control.signal}); }
+  finally { clearTimeout(timer); }
+}
 async function loadStatus(){
+  const info = document.getElementById('info');
   try{
-    const s = await (await fetch('api/cameras',{cache:'no-store'})).json();
+    const r = await fetchWithTimeout('api/cameras', 5000);
+    const s = await r.json();
     status = s; renderButtons(s.cameras);
-  }catch(e){ document.getElementById('info').textContent = '后台未连接'; }
+    if(!current) info.textContent = '选择上方相机（未选时不拉流，不占带宽）';
+  }catch(e){
+    info.textContent = '后台不可达：请确认 SSH 隧道已加 -L 8080:127.0.0.1:8080（' + location.host + '）';
+    document.getElementById('cams').innerHTML = '';
+  }
 }
 function renderButtons(cams){
   const box = document.getElementById('cams'); box.innerHTML='';
@@ -189,7 +201,7 @@ async function grab(){
   if(!current) return;
   const started = performance.now();
   try{
-    const r = await fetch('frame?cam='+encodeURIComponent(current)+'&t='+Date.now(),{cache:'no-store'});
+    const r = await fetchWithTimeout('frame?cam='+encodeURIComponent(current)+'&t='+Date.now(), 8000);
     if(!r.ok){ document.getElementById('info').textContent = current+'：'+r.status+' '+(await r.text()); return; }
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);
