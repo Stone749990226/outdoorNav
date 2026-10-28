@@ -136,7 +136,13 @@ def test_heading_jump_and_gnss_jump_latch():
     s=state();s.update_fix(fix(0,0,0,0,1),0);s.update_imu(observation(0,0,0),0)
     s.update_fix(fix(0,0,0,0,2),.1);s.update_imu(observation(math.pi/2,0,.1),.1)
     assert 'heading_jump' in s.fault
+    # A single position outlier is dropped without latching.
     s=state();s.update_fix(fix(0,0,0,0,1),0);s.update_fix(fix(5,0,0,0,2),.1)
+    assert s.fault is None
+    # A persistent jump streak stops the robot.
+    s=state();s.update_fix(fix(0,0,0,0,1),0)
+    for i in range(4):
+        s.update_fix(fix(5,0,0,0,2+i),.1+i/10)
     assert 'position_jump' in s.fault
 
 

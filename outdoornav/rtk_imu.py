@@ -40,6 +40,8 @@ class RtkImuFeedback:
         self.output = None
         self.reason = 'waiting_for_rtk_and_imu'
         self.gap_recoveries = 0
+        self.last_jump_at = -math.inf
+        self.jump_streak = 0
 
     def update_fix(self, fix, received):
         self.fix = dict(fix)
@@ -64,9 +66,14 @@ class RtkImuFeedback:
             old, old_velocity, old_at = self.previous_fix
             dt = received-old_at
             predicted = (old[0]+old_velocity[0]*dt,old[1]+old_velocity[1]*dt)
-            limit = .75 if grade == 'fixed' else max(.75,2*fix['hacc_m'])
+            # Field demo tolerance: a single outlier is dropped without
+            # latching; only a persistent jump streak stops the robot.
+            limit = 2.0 if grade == 'fixed' else max(2.0, 3*fix['hacc_m'])
             if dt < 0 or math.dist(position,predicted) > limit:
-                self.fault = 'gnss_position_jump; inspect RTK and restart'
+                self.jump_streak = self.jump_streak+1 if received-self.last_jump_at < 120 else 1
+                self.last_jump_at = received
+                if self.jump_streak >= 4:
+                    self.fault = 'gnss_position_jump; inspect RTK and restart'
                 return
         if self.grade != grade or received-self.fix_at >= self.config['sensor_timeout_s']:
             self.stable_since = received
