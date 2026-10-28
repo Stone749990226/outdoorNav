@@ -104,7 +104,11 @@ class WitImuDecoder:
                 angle = math.atan2(world_body[1, 0], world_body[0, 0])-declination
                 body_yaw = math.atan2(math.sin(angle), math.cos(angle))
         quality = bool(cfg.get('course_heading', False) or (cfg['quality_confirmed'] and cfg['yaw_std_deg'] is not None))
-        heading_ready = bool(angles_fresh and body_yaw is not None and self.mode == 0
+        # The READADDR query can go unanswered while the data stream stays
+        # healthy; in course_heading demo mode the magnetic anchor is corrected
+        # by measured travel direction, so an unverified mode still passes.
+        mode_ok = self.mode == 0 or (self.mode is None and cfg.get('course_heading', False))
+        heading_ready = bool(angles_fresh and body_yaw is not None and mode_ok
                              and quality and not self.fault)
         return {'source':'wit_imu', 'ready':heading_ready, 'heading_fresh':heading_ready,
                 'angles_fresh':angles_fresh,'gyro_fresh':gyro_fresh,
