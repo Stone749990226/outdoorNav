@@ -83,6 +83,7 @@
   "planner_patience_s": 60.0,
   "controller_patience_s": 60.0,
   "navigation_recovery_timeout_s": 15.0,
+  "command_timeout_s": 0.5,
   "inflation_padding_m": 0.1,
   "inflation_cost_scaling": 5.0,
   "planner_tolerance_m": 0.3,
