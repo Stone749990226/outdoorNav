@@ -82,14 +82,33 @@ def test_node_transforms_path_into_local_frame_without_running_ros():
     node.base_frame = 'base_link'
     node.get_clock = lambda: NS(now=lambda: NS(nanoseconds=10_200_000_000))
     def transform(target, source, _):
+        if target == 'map':
+            assert source == 'odom'
+            return NS(header=NS(stamp=NS(sec=10, nanosec=0)),
+                      transform=NS(translation=NS(x=-3., y=2.), rotation=NS(x=0., y=0., z=-math.sin(math.pi/4), w=math.cos(math.pi/4))))
         assert target == 'odom'
         return NS(header=NS(stamp=NS(sec=10, nanosec=0)),
                   transform=NS(translation=NS(x=2., y=3.), rotation=NS(x=0., y=0., z=math.sin(math.pi/4), w=math.cos(math.pi/4))))
     node.tf = NS(lookup_transform=transform)
     node.tasks = NS(snapshot=lambda: {'execution_path': [{'x': 1., 'y': 0.}]})
     result = node.costmap_snapshot('local')
+    assert result['map_from_frame']['x'] == -3.
+    assert result['map_from_frame']['yaw'] == pytest.approx(-math.pi/2)
     assert result['robot']['x'] == 2.
     assert result['path'][0]['x'] == pytest.approx(2.)
     assert result['path'][0]['y'] == pytest.approx(4.)
     assert result['age_s'] == pytest.approx(.2)
     assert node.costmap_snapshot('local')['image'] == result['image']
+
+
+def test_overlay_colors_and_transparency():
+    local = grid_snapshot(grid(), 0., theme='local')
+    global_map = grid_snapshot(grid(), 0., theme='global')
+    def image(result):
+        return Image.open(BytesIO(base64.b64decode(result['image'].split(',')[1]))).convert('RGBA')
+    a, b = image(local), image(global_map)
+    assert a.getpixel((0, 0))[3] == 0  # Unknown does not hide the global layer.
+    assert a.getpixel((0, 1))[3] == 0  # Nor does free space.
+    assert a.getpixel((2, 1))[3] > 0
+    assert b.getpixel((0, 0))[3] == 255
+    assert a.getpixel((2, 1))[:3] != b.getpixel((2, 1))[:3]

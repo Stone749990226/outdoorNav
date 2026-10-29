@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image
 
 
-def grid_snapshot(message, age_s, robot=None, path=()):
+def grid_snapshot(message, age_s, robot=None, path=(), theme=None):
     info = message.info
     width, height = int(info.width), int(info.height)
     if not (0 < width <= 10000 and 0 < height <= 10000
@@ -28,6 +28,15 @@ def grid_snapshot(message, age_s, robot=None, path=()):
         palette[3*i:3*i+3] = [255, round(225 - 140*i/98), 100]
     palette[297:303] = [239, 55, 69, 126, 12, 30]
     palette[765:768] = [78, 88, 98]
+    if theme == 'global':
+        for i in range(1, 101):
+            palette[3*i:3*i+3] = [110+round(i*.9), 65, 200]
+    elif theme == 'local':
+        for i in range(1, 101):
+            palette[3*i:3*i+3] = [20, 220-round(i*.7), 255]
+        transparency = bytearray([210]*256)
+        transparency[0] = transparency[255] = 0
+        image.info['transparency'] = bytes(transparency)
     image.putpalette(palette)
     output = BytesIO()
     image.save(output, format='PNG', optimize=True)

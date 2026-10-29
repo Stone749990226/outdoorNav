@@ -15,3 +15,15 @@ export function gridPoint(
     y: grid.height - (-s * dx + c * dy) / grid.resolution,
   };
 }
+
+/** Frame-local point to map ENU. Never silently overlay an unaligned odom grid. */
+export function mapPoint(grid: CostmapSnapshot, point: Point): Point | null {
+  const tf = grid.map_from_frame;
+  if (!tf) return null;
+  const c = Math.cos(tf.yaw),
+    s = Math.sin(tf.yaw);
+  return {
+    x: tf.x + c * point.x - s * point.y,
+    y: tf.y + s * point.x + c * point.y,
+  };
+}

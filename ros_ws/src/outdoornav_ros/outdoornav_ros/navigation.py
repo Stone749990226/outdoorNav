@@ -251,14 +251,25 @@ class Navigation(Node):
         except Exception:
             pass
         # Encode once per grid message, not once per viewer poll. No disk writes.
+        map_from_frame = {'x': 0., 'y': 0., 'yaw': 0., 'age_s': 0.} if frame == 'map' else None
+        if map_from_frame is None:
+            try:
+                transform = self.tf.lookup_transform('map', frame, rclpy.time.Time())
+                t = transform.transform.translation
+                map_from_frame = {'x': t.x, 'y': t.y, 'yaw': yaw(transform.transform.rotation),
+                    'age_s': max(0., self.get_clock().now().nanoseconds/1e9 -
+                                 transform.header.stamp.sec-transform.header.stamp.nanosec/1e9)}
+            except Exception:
+                pass
         cache = self.costmap_view_cache.get(layer)
         if cache is None or cache[0] is not message:
-            cache = (message, grid_snapshot(message, 0.))
+            cache = (message, grid_snapshot(message, 0., theme=layer))
             self.costmap_view_cache[layer] = cache
         source_age = self.get_clock().now().nanoseconds/1e9 - cache[1]['stamp_s']
         age = max(0., time.monotonic()-received, source_age)
         # Image, overlays and metadata use the grid's own frame (local is odom).
-        return {**cache[1], 'age_s': age, 'stale': age >= 3., 'robot': robot, 'path': path}
+        return {**cache[1], 'age_s': age, 'stale': age >= 3., 'robot': robot, 'path': path,
+                'map_from_frame': map_from_frame}
 
     def on_odom(self, msg):
         stamp = msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9

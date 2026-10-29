@@ -159,6 +159,7 @@ export const cancelTask = (id: string) =>
   request<NavigationTask>(`/api/tasks/${id}/cancel`, "POST");
 
 export type CostmapSnapshot = {
+  map_from_frame: (Point & { yaw: number; age_s: number }) | null;
   schema_version: number;
   frame_id: string;
   width: number;

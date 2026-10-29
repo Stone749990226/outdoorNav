@@ -74,6 +74,7 @@ function referenceResult(route: RoutePreview): ABResult {
 export function ABWorkspace() {
   const navigation = useNavigation();
   const [showCostmap, setShowCostmap] = useState(false);
+  const [showTools, setShowTools] = useState(false);
   const [places, setPlaces] = useState<SemanticPlace[]>(placeData.places);
   const hardware = navigation.status?.mode === "lynx";
   useEffect(() => {
@@ -419,7 +420,9 @@ export function ABWorkspace() {
     </g>
   );
   return (
-    <main className="workspace ab-workspace">
+    <main
+      className={`workspace ab-workspace ${showTools ? "with-tools" : "compact-workspace"}`}
+    >
       <aside className="left-panel panel ab-controls">
         <div className="panel-heading">
           <h2>A → B 路线规划</h2>
@@ -564,25 +567,41 @@ export function ABWorkspace() {
       </aside>
       <section className="map-panel panel">
         <div className="map-toolbar">
-          <button onClick={() => setShowSurvey((v) => !v)}>原始 / 滤波</button>
+          {!showCostmap && (
+            <>
+              <button onClick={() => setShowSurvey((v) => !v)}>
+                原始 / 滤波
+              </button>
+              <button
+                onClick={() =>
+                  setLayers((v) => ({ ...v, network: !v.network }))
+                }
+              >
+                显示道路网络
+              </button>
+              <button
+                onClick={() =>
+                  setLayers((v) => ({ ...v, basemap: !v.basemap }))
+                }
+              >
+                显示园区底图
+              </button>
+            </>
+          )}
           <button
-            onClick={() => setLayers((v) => ({ ...v, network: !v.network }))}
+            className="costmap-toggle"
+            data-testid="toggle-costmap"
+            onClick={() => setShowCostmap((v) => !v)}
           >
-            显示道路网络
+            {showCostmap ? "返回路线地图" : "查看实时代价地图"}
           </button>
           <button
-            onClick={() => setLayers((v) => ({ ...v, basemap: !v.basemap }))}
+            aria-expanded={showTools}
+            onClick={() => setShowTools((v) => !v)}
           >
-            显示园区底图
+            {showTools ? "收起工具" : "路线与导出"}
           </button>
         </div>
-        <button
-          className="costmap-toggle"
-          data-testid="toggle-costmap"
-          onClick={() => setShowCostmap((v) => !v)}
-        >
-          {showCostmap ? "返回路线地图" : "查看实时代价地图"}
-        </button>
         {showCostmap ? (
           <CostmapPanel />
         ) : (
@@ -606,89 +625,93 @@ export function ABWorkspace() {
           <p className="ab-arrived">离线预览已到达</p>
         )}
       </section>
-      <aside className="right-panel panel">
-        {!hardware && (
-          <ObstaclePanel
-            enabled={online}
-            obstacles={obstacles}
-            start={obstacleStart}
-            end={obstacleEnd}
-            selection={obstacleSelection}
-            select={(value) => {
-              setObstacleSelection(value);
-              setBlockMode(false);
-            }}
-            clear={() => {
-              setObstacleSelection(null);
-              setObstacleStart(null);
-              setObstacleEnd(null);
-            }}
-          />
-        )}
-        <h3>路线与导出</h3>
-        <p>绿色：道路参考路线（尚未确认无障碍）· 蓝色虚线：Nav2 当前执行路径</p>
-        {waypoints.length > 0 && (
-          <details>
-            <summary>规划途经点（{waypoints.length}）</summary>
-            <ol>
-              {waypoints.map((waypoint, index) => (
-                <li key={index}>
-                  {waypoint.name} · {coordinate(waypoint.point)}
-                </li>
-              ))}
-            </ol>
-          </details>
-        )}
-        <p>
-          {result?.plan
-            ? `${(result.plan.length * scale).toFixed(1)} m · ${result.waypoints.length} 个途经点`
-            : taskReference.length > 1
-              ? `当前任务参考路线 · ${waypoints.length} 个途经点`
-              : "尚未规划"}
-        </p>
-        <button
-          title="播放 A/B 预览"
-          disabled={!result?.plan}
-          onClick={playback}
-        >
-          <Play size={15} />
-          离线动画预览
-        </button>
-        <button
-          disabled={!result?.plan}
-          onClick={() =>
-            result &&
-            b &&
-            download(
-              "route.json",
-              JSON.stringify(exportAB(result.points[0], b, result), null, 2),
-            )
-          }
-        >
-          <Download size={15} />
-          路线 JSON
-        </button>
-        <button
-          disabled={!result?.plan}
-          onClick={() =>
-            result &&
-            download(
-              "waypoints.csv",
-              waypointCSV(serializeWaypoints(result.waypoints)),
-              "text/csv;charset=utf-8",
-            )
-          }
-        >
-          途经点 CSV
-        </button>
-        <button
-          onClick={() =>
-            download("map.json", JSON.stringify(exportMap(blocked), null, 2))
-          }
-        >
-          地图 JSON
-        </button>
-      </aside>
+      {showTools && (
+        <aside className="right-panel panel">
+          {!hardware && (
+            <ObstaclePanel
+              enabled={online}
+              obstacles={obstacles}
+              start={obstacleStart}
+              end={obstacleEnd}
+              selection={obstacleSelection}
+              select={(value) => {
+                setObstacleSelection(value);
+                setBlockMode(false);
+              }}
+              clear={() => {
+                setObstacleSelection(null);
+                setObstacleStart(null);
+                setObstacleEnd(null);
+              }}
+            />
+          )}
+          <h3>路线与导出</h3>
+          <p>
+            绿色：道路参考路线（尚未确认无障碍）· 蓝色虚线：Nav2 当前执行路径
+          </p>
+          {waypoints.length > 0 && (
+            <details>
+              <summary>规划途经点（{waypoints.length}）</summary>
+              <ol>
+                {waypoints.map((waypoint, index) => (
+                  <li key={index}>
+                    {waypoint.name} · {coordinate(waypoint.point)}
+                  </li>
+                ))}
+              </ol>
+            </details>
+          )}
+          <p>
+            {result?.plan
+              ? `${(result.plan.length * scale).toFixed(1)} m · ${result.waypoints.length} 个途经点`
+              : taskReference.length > 1
+                ? `当前任务参考路线 · ${waypoints.length} 个途经点`
+                : "尚未规划"}
+          </p>
+          <button
+            title="播放 A/B 预览"
+            disabled={!result?.plan}
+            onClick={playback}
+          >
+            <Play size={15} />
+            离线动画预览
+          </button>
+          <button
+            disabled={!result?.plan}
+            onClick={() =>
+              result &&
+              b &&
+              download(
+                "route.json",
+                JSON.stringify(exportAB(result.points[0], b, result), null, 2),
+              )
+            }
+          >
+            <Download size={15} />
+            路线 JSON
+          </button>
+          <button
+            disabled={!result?.plan}
+            onClick={() =>
+              result &&
+              download(
+                "waypoints.csv",
+                waypointCSV(serializeWaypoints(result.waypoints)),
+                "text/csv;charset=utf-8",
+              )
+            }
+          >
+            途经点 CSV
+          </button>
+          <button
+            onClick={() =>
+              download("map.json", JSON.stringify(exportMap(blocked), null, 2))
+            }
+          >
+            地图 JSON
+          </button>
+        </aside>
+      )}
     </main>
   );
 }

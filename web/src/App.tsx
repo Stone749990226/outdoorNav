@@ -56,7 +56,9 @@ export default function App() {
     };
   }, [setWorkspaceMode]);
   return (
-    <div className="app-shell">
+    <div
+      className={`app-shell ${workspaceMode === "ab" ? "compact-navigation" : ""}`}
+    >
       <header className="app-header">
         <a className="brand" href="#" onClick={(e) => e.preventDefault()}>
           <span className="brand-icon">

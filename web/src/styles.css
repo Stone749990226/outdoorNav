@@ -2226,3 +2226,142 @@ svg text {
   border-radius: 6px;
   margin: 8px 0;
 }
+
+/* Compact navigation workspace: give the map the screen, not empty sidebars. */
+.app-shell.compact-navigation {
+  padding: 0 16px;
+  grid-template-rows: 52px 64px minmax(0, 1fr) 38px;
+  min-height: 540px;
+}
+.compact-navigation .page-heading {
+  padding: 8px 0;
+  align-items: center;
+}
+.compact-navigation .page-heading .eyebrow {
+  display: none;
+}
+.compact-navigation .page-heading h1 {
+  font-size: 22px;
+}
+.compact-navigation .page-heading p {
+  margin-top: 3px;
+}
+.compact-navigation .app-header {
+  gap: 16px;
+}
+.compact-navigation .ab-workspace.compact-workspace {
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 12px;
+}
+.compact-navigation .ab-workspace.with-tools {
+  grid-template-columns: 260px minmax(0, 1fr) 240px;
+  gap: 12px;
+}
+.compact-navigation .left-panel,
+.compact-navigation .right-panel {
+  padding: 14px 12px;
+}
+.compact-navigation .panel-heading {
+  margin-bottom: 12px;
+}
+.compact-navigation .map-toolbar {
+  height: 42px;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0 10px;
+}
+.compact-navigation .costmap-toggle {
+  margin: 0;
+  padding: 6px 10px;
+}
+.compact-navigation .map-panel > p {
+  padding: 4px 10px;
+}
+.compact-navigation .costmap-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+}
+.costmap-controls {
+  flex-shrink: 0;
+  padding: 9px 12px;
+  gap: 12px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.costmap-controls button {
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+.costmap-controls > span {
+  margin-left: auto;
+  color: var(--muted);
+}
+.costmap-global {
+  color: #bd79ff;
+}
+.costmap-local {
+  color: #22d3ee;
+}
+.costmap-status,
+.costmap-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 12px;
+  font-size: 11px;
+  color: #99ada6;
+}
+.compact-navigation .costmap-canvas {
+  flex: 1;
+  width: 100%;
+  height: 0;
+  min-height: 200px;
+  margin: 0;
+  touch-action: none;
+  cursor: grab;
+  background: #202b30;
+}
+.costmap-canvas:active {
+  cursor: grabbing;
+}
+@media (max-width: 900px) {
+  .app-shell.compact-navigation {
+    display: flex;
+    height: auto;
+    min-height: 100dvh;
+  }
+  .compact-navigation .ab-workspace.compact-workspace,
+  .compact-navigation .ab-workspace.with-tools {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+  .compact-navigation .map-panel {
+    min-height: 65vh;
+  }
+}
+@media (max-width: 600px) {
+  .compact-navigation .ab-workspace.compact-workspace,
+  .compact-navigation .ab-workspace.with-tools {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .compact-navigation .map-panel {
+    grid-row: 1;
+    min-height: 65vh;
+  }
+  .compact-navigation .left-panel {
+    grid-row: 2;
+    max-height: none;
+  }
+  .compact-navigation .right-panel {
+    grid-row: 3;
+  }
+  .costmap-controls > span {
+    margin-left: 0;
+  }
+}

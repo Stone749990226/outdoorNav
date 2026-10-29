@@ -34,6 +34,12 @@ test("read-only costmap view switches frames, shows stale data and returns to go
       return route.fulfill({
         json: {
           schema_version: 1,
+          map_from_frame: {
+            x: global ? 0 : 2,
+            y: global ? 0 : 3,
+            yaw: 0,
+            age_s: 0.1,
+          },
           frame_id: global ? "map" : "odom",
           width: 10,
           height: 10,
@@ -56,13 +62,27 @@ test("read-only costmap view switches frames, shows stale data and returns to go
   });
   await page.goto("/");
   await page.getByTestId("toggle-costmap").click();
-  await expect(page.getByTestId("costmap-panel")).toContainText("odom 坐标");
-  await expect(
-    page.getByRole("img", { name: "实时导航代价地图" }),
-  ).toBeVisible();
-  await page.getByLabel("代价图类型").selectOption("global");
-  await expect(page.getByTestId("costmap-panel")).toContainText("map 坐标");
+  await expect(page.getByTestId("costmap-layer-local")).toBeVisible();
+  await expect(page.getByTestId("costmap-layer-global")).toBeVisible();
   await expect(page.getByTestId("costmap-panel")).toContainText("已过期");
+  const canvas = page.getByRole("img", { name: "实时导航代价地图" });
+  const box = (await canvas.boundingBox())!;
+  const before = await canvas.getAttribute("viewBox");
+  await canvas.hover();
+  await page.mouse.wheel(0, -300);
+  await expect.poll(() => canvas.getAttribute("viewBox")).not.toBe(before);
+  const zoomed = await canvas.getAttribute("viewBox");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    box.x + box.width / 2 + 80,
+    box.y + box.height / 2 + 30,
+  );
+  await page.mouse.up();
+  await expect.poll(() => canvas.getAttribute("viewBox")).not.toBe(zoomed);
+  await page.getByLabel("局部 · 青色").uncheck();
+  await expect(page.getByTestId("costmap-layer-local")).toHaveCount(0);
+  await expect(page.getByTestId("costmap-layer-global")).toBeVisible();
   await page.getByTestId("toggle-costmap").click();
   await expect(page.getByTestId("costmap-panel")).toHaveCount(0);
   await expect(page.getByTestId("select-b")).toBeVisible();
