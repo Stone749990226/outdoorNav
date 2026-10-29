@@ -147,16 +147,26 @@ class ProgressBudget:
     controller_failures: int = 0
     progress_point: tuple | None = None
     last_progress_s: float = 0.0
+    planner_patience_s: float = 0.0
+    controller_patience_s: float = 20.0
+    planner_failed_since: float | None = None
 
-    def planned(self, valid):
+    def planned(self, valid, stamp=None):
         self.planner_failures = 0 if valid else self.planner_failures + 1
+        if valid:
+            self.planner_failed_since = None
+            return True
+        if self.planner_patience_s > 0 and stamp is not None:
+            if self.planner_failed_since is None:
+                self.planner_failed_since = stamp
+            return stamp - self.planner_failed_since < self.planner_patience_s
         return self.planner_failures < 3
 
     def controller_ended(self, stamp):
         self.controller_failures += 1
         # A moving obstacle can block a controller briefly. Match the existing
         # 20-second progress allowance before declaring repeated retries stalled.
-        return self.controller_failures < 3 or stamp - self.last_progress_s < 20
+        return self.controller_failures < 3 or stamp - self.last_progress_s < self.controller_patience_s
 
     def moved(self, x, y, stamp):
         import math

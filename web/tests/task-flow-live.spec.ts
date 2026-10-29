@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { mapToSvg, bundle } from "../src/map";
+import { mapToSvg, toMap, bundle } from "../src/map";
+import { snap } from "../src/planner";
 import { choose } from "./mapHelpers";
 
 test("isolated real frontend and Nav2: arrive, cancel, replace, fail and recover", async ({
@@ -25,10 +26,17 @@ test("isolated real frontend and Nav2: arrive, cancel, replace, fail and recover
   const record = async (name: string, value: any) => {
     await request.post(control + "/event", { data: { name, ...value } });
   };
-  const goal = (meters: number) => ({
-    x: scope.start.x + meters * scope.direction[0],
-    y: scope.start.y + meters * scope.direction[1],
-  });
+  const multiplier = scope.field_policy ? scope.arrival_tolerance_m / 0.5 : 1;
+  const goal = (meters: number) => {
+    const raw = {
+      x: scope.start.x + meters * multiplier * scope.direction[0],
+      y: scope.start.y + meters * multiplier * scope.direction[1],
+    };
+    // The first surveyed segment curves farther ahead. Select real road points
+    // rather than extrapolating outside the UI's allowed 2 m road corridor.
+    const projected = snap(mapToSvg(raw));
+    return projected ? toMap(projected.point) : raw;
+  };
   const waitState = async (id: string, state: string) => {
     await expect
       .poll(async () => (await task(id)).state, {
@@ -39,7 +47,29 @@ test("isolated real frontend and Nav2: arrive, cancel, replace, fail and recover
     return task(id);
   };
   const execute = async (meters: number) => {
-    await choose(page, mapToSvg(goal(meters)));
+    const target = mapToSvg(goal(meters));
+    if (scope.field_policy) {
+      // Pan long-range targets into the map instead of clicking outside its
+      // viewport or shrinking semantic-place hit targets onto one another.
+      const screen = await page.getByTestId('campus-map').evaluate((svg, point) => {
+        const p=(svg as SVGSVGElement).createSVGPoint(); p.x=point.x;p.y=point.y;
+        const q=p.matrixTransform((svg.querySelector(':scope > g') as SVGGElement).getScreenCTM()!);
+        const box=svg.getBoundingClientRect();
+        return { x:q.x,y:q.y,cx:box.x+box.width/2,cy:box.y+box.height/2 };
+      }, target);
+      await page.mouse.move(screen.cx,screen.cy);await page.mouse.down();
+      await page.mouse.move(screen.cx+(screen.cx-screen.x),screen.cy+(screen.cy-screen.y),{steps:5});
+      await page.mouse.up();
+    }
+    if (scope.field_policy) {
+      console.log('PICK_HIT', meters, await page.getByTestId('campus-map').evaluate((svg, point) => {
+        const p=(svg as SVGSVGElement).createSVGPoint();p.x=point.x;p.y=point.y;
+        const q=p.matrixTransform((svg.querySelector(':scope > g') as SVGGElement).getScreenCTM()!);
+        return {x:q.x,y:q.y,hit:document.elementFromPoint(q.x,q.y)?.outerHTML.slice(0,220)};
+      }, target));
+    }
+    await choose(page, target);
+    if (scope.field_policy) console.log('PICK_RESULT', meters, await page.getByTestId('select-b').innerText(), await page.getByTestId('ab-message').innerText());
     const planned = page.waitForResponse(
       (r) => r.url() === base + "/api/plans" && r.request().method() === "POST",
     );
@@ -54,6 +84,10 @@ test("isolated real frontend and Nav2: arrive, cancel, replace, fail and recover
       .click();
     const accepted = await response;
     expect(accepted.status()).toBe(202);
+    const sent = accepted.request().postDataJSON().goal;
+    expect(
+      Math.hypot(sent.x - goal(meters).x, sent.y - goal(meters).y),
+    ).toBeLessThanOrEqual(2.01);
     return {
       value: await accepted.json(),
       payload: accepted.request().postDataJSON(),
@@ -74,16 +108,37 @@ test("isolated real frontend and Nav2: arrive, cancel, replace, fail and recover
   await expect(page.getByTestId("navigation-status")).toContainText(
     "山猫室外导航就绪",
   );
+  if (scope.field_policy) {
+    await request.post(control + "/blockage", { data: { blocked: true } });
+    // Wait for two global-map update periods, not an arbitrary long timeout.
+    await page.waitForTimeout(1200);
+  }
   const first = await execute(1.8);
   expect(first.value.state).toBe("accepted");
   const duplicate = await request.post(base + "/api/tasks", {
     data: first.payload,
   });
   expect((await duplicate.json()).task_id).toBe(first.value.task_id);
+  if (scope.field_policy) {
+    await expect
+      .poll(async () => (await task(first.value.task_id)).reason, {
+        timeout: 10000,
+      })
+      .toContain("停车等待");
+    const waiting = await task(first.value.task_id);
+    expect(waiting.state).toBe("planning");
+    const stopped = await (await request.get(control + "/scope")).json();
+    expect(Math.abs(stopped.v)).toBeLessThanOrEqual(0.01);
+    await request.post(control + "/blockage", { data: { blocked: false } });
+    await record("blockage_wait_and_resume", {
+      task_id: waiting.task_id,
+      waited_without_failing: true,
+    });
+  }
   const arrived = await waitState(first.value.task_id, "succeeded");
   const at = await (await request.get(control + "/scope")).json();
   const error = Math.hypot(at.x - arrived.goal.x, at.y - arrived.goal.y);
-  expect(error).toBeLessThanOrEqual(0.55);
+  expect(error).toBeLessThanOrEqual(scope.arrival_tolerance_m + 0.05);
   expect(Math.abs(at.v)).toBeLessThanOrEqual(0.01);
   expect(Math.abs(at.w)).toBeLessThanOrEqual(0.01);
   expect(at.nonzero_commands).toBeGreaterThan(0);

@@ -52,7 +52,11 @@ export function NavigationPanel({
         <button
           onClick={onExecute}
           disabled={busy || !canExecute || !match || !status?.ready}
-          title={busy || !canExecute || !match || !status?.ready ? blockedReason : undefined}
+          title={
+            busy || !canExecute || !match || !status?.ready
+              ? blockedReason
+              : undefined
+          }
         >
           <Send size={14} />
           {status?.task && !terminal(status.task) ? "替换导航目标" : "执行导航"}
@@ -80,6 +84,16 @@ export function NavigationPanel({
             ))}
           </ul>
         )}
+      {match && status?.policy_warnings?.length ? (
+        <details className="policy-warnings">
+          <summary>现场策略提示（{status.policy_warnings.length}）</summary>
+          <ul>
+            {status.policy_warnings.map((w) => (
+              <li key={w.code}>{w.message}</li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
       {match && status?.task && (
         <small>
           {status.mode === "lynx"

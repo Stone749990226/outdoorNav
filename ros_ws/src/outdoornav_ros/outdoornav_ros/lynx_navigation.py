@@ -21,6 +21,7 @@ from outdoornav.api import serve
 from outdoornav.config import load_robot_config
 from outdoornav.diagnostics import readiness_reasons
 from outdoornav.scan_health import healthy_scan
+from outdoornav.field_policy import field_warnings
 from outdoornav.places import Places
 from outdoornav.outdoor import OutdoorService
 from outdoornav.tasks import TaskStore, TERMINAL
@@ -42,7 +43,9 @@ class LynxNavigation(Navigation):
         self.outdoor = OutdoorService(self.bundle, self.places, self.tasks, self.status, self.config)
         self.geo, self.geo_at = {}, -math.inf
         self.guard, self.guard_at = {}, -math.inf
-        self.service_active = False
+        self.service_active = self.config.get('auto_activate', False)
+        self.chassis, self.chassis_at = {}, -math.inf
+        self.create_subscription(String, '/outdoor/chassis_status', self.on_chassis, 10)
         self.startup_stopped, self.stationary_since = False, None
         self.create_subscription(String, '/outdoor/localization', self.on_geo, 10)
         self.create_subscription(String, '/outdoor/command_status', self.on_guard, 10)
@@ -55,10 +58,19 @@ class LynxNavigation(Navigation):
 
     def check_stationary(self):
         now = time.monotonic()
-        stopped = now - self.velocity_at < self.config["sensor_timeout_s"] and max(self.velocity) <= 0.01
+        stopped = now - self.velocity_at < self.config["sensor_timeout_s"] and self.velocity[0] <= self.config.get('stopped_linear_mps', .01) and self.velocity[1] <= self.config.get('stopped_angular_rps', .01)
         self.stationary_since = (now if self.stationary_since is None else self.stationary_since) if stopped else None
-        if self.stationary_since is not None and now - self.stationary_since >= 1:
+        if self.stationary_since is not None and now - self.stationary_since >= self.config.get('stop_hold_s', 1.):
             self.startup_stopped = True
+
+    def on_chassis(self, msg):
+        try:
+            value = json.loads(msg.data)
+            if not isinstance(value, dict):
+                raise ValueError('Invalid chassis status')
+            self.chassis, self.chassis_at = value, time.monotonic()
+        except (ValueError, TypeError):
+            self.chassis = {}
 
     def on_geo(self, msg):
         try:
@@ -94,11 +106,15 @@ class LynxNavigation(Navigation):
                   for key, limit in (('lidar', timeout), ('global_map', 3), ('local_map', timeout))}
         health.update({
             'localization': bool(geo.get('ready')) and now - self.geo_at < timeout
-                            and (required != 'fixed' or grade == 'fixed'),
+                            and (required != 'fixed' or grade == 'fixed' or
+                                 (grade == 'float' and config.get('allow_float_during_fixed_task', False))),
             'heading': bool(geo.get('heading', {}).get('ready')) if config['heading_source'] == 'wit_imu' else True,
             'calibration': config['calibrated'] and config['antenna_offset_confirmed']
                            and config['footprint_confirmed'] and config['cloud_frame_confirmed'],
             'motion_enabled': config['motion_enabled'],
+            'chassis': (not config.get('require_chassis_ready', False) or
+                        (getattr(self, 'chassis', {}).get('ready') is True and
+                         now-getattr(self, 'chassis_at', -math.inf) < timeout)),
             'production_mode': not self.diagnostic,
             'sensor_extrinsics': bool(geo.get('extrinsics', {}).get('ready')),
             'service_active': self.service_active,
@@ -126,6 +142,11 @@ class LynxNavigation(Navigation):
                 'odometry_source': 'rtk_doppler+wit_imu' if config['localization_mode'] == 'rtk_imu' else (config.get('odom_topic') or None),
                 'feedback':geo.get('feedback'),'velocity_source':geo.get('velocity_source'),
                 'command_status': dict(self.guard),
+                'chassis': getattr(self, 'chassis', {}),
+                'policy_warnings': field_warnings(config, geo.get('heading') or {}) if 'wit_imu' in config else [],
+                'runtime_policy': {key: config.get(key) for key in (
+                    'allow_float_during_fixed_task', 'stopped_linear_mps', 'planner_patience_s',
+                    'controller_patience_s', 'scan_range_min_m', 'inflation_padding_m', 'inflation_cost_scaling')},
                 'tf_conflicts': geo.get('tf_conflicts', {}),
                 'command_topic': self.resolve_topic_name('/outdoor/diagnostic_cmd_vel' if self.diagnostic else '/cmd_vel'),
                 'not_ready_reasons': readiness_reasons(health, geo),

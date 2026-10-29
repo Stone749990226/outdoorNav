@@ -23,6 +23,21 @@ DEFAULTS = {
     'scan_range_min_m': 0.0,
     'obstacle_layer_enabled': True,
     'local_track_unknown': True,
+    'allow_float_during_fixed_task': False,
+    'require_chassis_ready': False,
+    'auto_activate': False,
+    'respect_place_heading': True,
+    'stopped_linear_mps': 0.01,
+    'stopped_angular_rps': 0.01,
+    'stop_hold_s': 1.0,
+    'planner_patience_s': 0.0,
+    'controller_patience_s': 20.0,
+    'inflation_padding_m': 0.2,
+    'inflation_cost_scaling': 3.0,
+    'planner_tolerance_m': 0.2,
+    'transform_tolerance_s': 0.2,
+    'course_min_speed_mps': 0.25,
+    'course_speed_accuracy_factor': 3.0,
 }
 
 
@@ -53,10 +68,17 @@ def load_robot_config(path):
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
             raise ValueError(key + ' must be finite')
     for key in DEFAULTS:
-        if key in boolean_defaults or key == 'scan_range_min_m':
+        if key in boolean_defaults or key in ('scan_range_min_m', 'planner_patience_s', 'inflation_padding_m'):
             continue
         if config[key] <= 0:
             raise ValueError(key + ' must be positive')
+    if not (0 <= config['planner_patience_s'] <= 300
+            and 0 < config['controller_patience_s'] <= 300
+            and 0 <= config['inflation_padding_m'] <= 2
+            and 0 < config['stopped_linear_mps'] <= .05
+            and 0 < config['stopped_angular_rps'] <= .05
+            and 0 < config['transform_tolerance_s'] <= 1):
+        raise ValueError('Invalid recovery, stopping or costmap limits')
     for key in ('antenna_xy_m', 'map_offset_xy_m'):
         values = config.get(key)
         if not isinstance(values, list) or len(values) != 2 or not all(
@@ -69,8 +91,8 @@ def load_robot_config(path):
             and config['gnss_fixed_hacc_m'] <= config['gnss_float_hacc_m']
             and config['fixed_arrival_m'] <= config['float_arrival_m']):
         raise ValueError('Invalid outdoor speed, footprint, sensor band or GNSS limits')
-    if not isinstance(config['scan_range_min_m'], (int, float)) or config['scan_range_min_m'] < 0:
-        raise ValueError('scan_range_min_m must be a non-negative distance')
+    if not isinstance(config['scan_range_min_m'], (int, float)) or not 0 <= config['scan_range_min_m'] < 8:
+        raise ValueError('scan_range_min_m must be >= 0 and below the 8 m scan range')
     if type(config['local_track_unknown']) is not bool:
         raise ValueError('local_track_unknown must be an explicit boolean')
     if type(config['obstacle_layer_enabled']) is not bool:

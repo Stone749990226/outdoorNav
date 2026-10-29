@@ -64,6 +64,7 @@ export type NavigationStatus = {
   diagnostic?: boolean;
   command_topic?: string;
   not_ready_reasons?: { code: string; message: string }[];
+  policy_warnings?: { code: string; message: string }[];
   pose_source?: string;
   localization_grade?: "fixed" | "float" | null;
   schema_version: number;

@@ -37,6 +37,9 @@ def nodes(context):
         raise ValueError("Invalid speed limit or measured footprint radius")
     share = Path(get_package_share_directory("outdoornav_ros"))
     params = yaml.safe_load((share / "config/lynx_navigation.yaml").read_text())
+    params['planner_server']['ros__parameters']['GridBased']['tolerance'] = robot['planner_tolerance_m']
+    params['controller_server']['ros__parameters']['FollowPath']['transform_tolerance'] = robot['transform_tolerance_s']
+    params['controller_server']['ros__parameters']['FollowPath']['trans_stopped_velocity'] = robot['stopped_linear_mps']
     grid = bundle["grid"]
     for name, rolling, frame in (
         ("global_costmap", False, "map"),
@@ -53,7 +56,7 @@ def nodes(context):
             "update_frequency": 5.0 if rolling else 2.0,
             "publish_frequency": 5.0 if rolling else 2.0,
             "always_send_full_costmap": True,
-            "transform_tolerance": 0.2,
+            "transform_tolerance": robot['transform_tolerance_s'],
             "resolution": float(grid["resolution"]),
             "robot_radius": robot["footprint_radius_m"],
             "width": 8 if rolling else math.ceil(grid["width"] * grid["resolution"]),
@@ -75,8 +78,8 @@ def nodes(context):
             },
             "inflation_layer": {
                 "plugin": "nav2_costmap_2d::InflationLayer",
-                "inflation_radius": robot["footprint_radius_m"] + 0.2,
-                "cost_scaling_factor": 3.0,
+                "inflation_radius": robot["footprint_radius_m"] + robot['inflation_padding_m'],
+                "cost_scaling_factor": robot['inflation_cost_scaling'],
             },
 
         }
@@ -169,7 +172,7 @@ def nodes(context):
             parameters=[
                 {
                     "target_frame": "base_link",
-                    "transform_tolerance": 0.2,
+                    "transform_tolerance": robot['transform_tolerance_s'],
                     "min_height": robot["cloud_min_height_m"],
                     "max_height": robot["cloud_max_height_m"],
                     "range_min": robot["scan_range_min_m"] or robot["footprint_radius_m"],

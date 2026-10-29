@@ -602,11 +602,11 @@ class Navigation(Node):
             now = time.monotonic()
             stopped = (
                 time.monotonic() - self.velocity_at < (self.config["sensor_timeout_s"] if self.hardware else 1)
-                and self.velocity[0] <= 0.01
-                and self.velocity[1] <= 0.01
+                and self.velocity[0] <= (self.config.get('stopped_linear_mps', .01) if self.hardware else .01)
+                and self.velocity[1] <= (self.config.get('stopped_angular_rps', .01) if self.hardware else .01)
             )
             stable = (now if stable is None else stable) if stopped else None
-            if stable is not None and now - stable >= 1.0:
+            if stable is not None and now - stable >= (self.config.get('stop_hold_s', 1.) if self.hardware else 1.):
                 return True
             await self.pause()
         return False
@@ -752,7 +752,9 @@ class Navigation(Node):
             current_points, follow_result = [], None
             sent_window = None
             last_plan, last_send = -math.inf, -math.inf
-            budget = ProgressBudget()
+            policy = self.config if self.hardware else {}
+            budget = ProgressBudget(planner_patience_s=policy.get('planner_patience_s', 0.),
+                                    controller_patience_s=policy.get('controller_patience_s', 20.))
             started_sim = self.get_clock().now().nanoseconds / 1e9
             while True:
                 if self.interrupted(task_id):
@@ -780,14 +782,12 @@ class Navigation(Node):
                 ) = math.sin(position["yaw"] / 2), math.cos(position["yaw"] / 2)
                 feedback.distance_remaining = route_remaining
                 handle.publish_feedback(feedback)
-                if guidance.final_leg and remaining <= tolerance and self.arrival_heading_ok(position, goal_point) and (
-                    not current_points
-                    or (
-                        follow_result is not None
-                        and follow_result.done()
-                        and follow_result.result().status == GoalStatus.STATUS_SUCCEEDED
-                    )
-                ):
+                # Task arrival is not the controller's tight per-window goal.
+                # Require ordered route distance too, so a nearby goal across a
+                # U-shaped road cannot shortcut unvisited bends. Cancel/release
+                # FollowPath and verify measured stop before success below.
+                if (remaining <= tolerance and route_remaining <= tolerance
+                        and self.arrival_heading_ok(position, goal_point)):
                     self.stopping = True
                     if not await self.release_controller(follow_requests, follow_results):
                         raise RuntimeError("Could not release controller at arrival")
@@ -832,13 +832,18 @@ class Navigation(Node):
                         for p in path.poses
                     ] if path is not None else []
                     if len(points) < 2:
-                        if not budget.planned(False):
+                        if not budget.planned(False, now):
                             raise RuntimeError(
                                 "No traversable path in the sensor costmap"
                             )
-                        await self.pause(0.2)
+                        self.stopping = True
+                        if not await self.release_controller(follow_requests, follow_results):
+                            raise RuntimeError('Cannot release controller while waiting for a path')
+                        current_points, follow_result = [], None
+                        self.tasks.update(task_id, state='planning', reason='暂时无可行路径，停车等待并重规划')
+                        await self.pause(0.5)
                         continue
-                    budget.planned(True)
+                    budget.planned(True, now)
                     if not guidance_changed and current_points and follow_result and not follow_result.done():
                         if not self.path_obstructed(current_points, position) and (
                             now - last_send < 6
@@ -887,6 +892,7 @@ class Navigation(Node):
                         state="navigating",
                         path_revision=revision,
                         execution_path=points,
+                        reason=None,
                     )
                     self.stopping = False
                     self.path_pub.publish(path)

@@ -42,7 +42,8 @@ class OutdoorService:
             if self.places is None:
                 raise ValueError('Named places are unavailable')
             place = self.places.resolve(payload['place_id'])
-            goal = {k: place[k] for k in ('x', 'y', 'yaw')}
+            keys = ('x', 'y', 'yaw') if self.config.get('respect_place_heading', True) else ('x', 'y')
+            goal = {k: place[k] for k in keys}
             goal.update(place_id=place['id'], enabled=place['enabled'])
         else:
             raw = payload.get('goal')

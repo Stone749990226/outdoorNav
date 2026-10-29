@@ -145,6 +145,7 @@ def readiness_reasons(health, geo):
         'lidar': '雷达无有效新数据', 'global_map': '全局代价地图未就绪',
         'local_map': '局部代价地图未就绪', 'localization': '无合格且稳定的 RTK 定位',
         'calibration': '坐标、天线或机器人外形尚未确认', 'motion_enabled': '运动开关关闭',
+        'chassis': '底盘未站立、未进入导航模式或状态反馈中断',
         'service_active': '导航服务未激活', 'controller_stopped': '尚未确认停稳或停车失败',
         'odometry': '连续里程计来源未配置、未确认或数据过期', 'actions': '导航执行服务不可用',
         'exclusive_owners': '室外 TF 或速度发布冲突', 'tf': '室外定位坐标变换未就绪',
@@ -184,7 +185,7 @@ def readiness_reasons(health, geo):
         reasons.append({'code': 'lio_not_ready', 'message': '雷达／IMU 里程计未就绪：' +
                         (geo['lio'].get('fault') or '等待同步输入及稳定输出')})
     heading = geo.get('heading') or {}
-    if heading.get('source') == 'wit_imu':
+    if heading.get('source') == 'wit_imu' and health.get('heading') is False:
         if not heading.get('nine_axis_verified'):
             reasons.append({'code':'imu_mode','message':'新 IMU 未确认九轴磁航向模式'})
         if not heading.get('angles_fresh') or not heading.get('gyro_fresh'):

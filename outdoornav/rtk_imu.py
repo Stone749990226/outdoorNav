@@ -75,8 +75,11 @@ class RtkImuFeedback:
                 if self.jump_streak >= 4:
                     self.fault = 'gnss_position_jump; inspect RTK and restart'
                 return
-        if self.grade != grade or received-self.fix_at >= self.config['sensor_timeout_s']:
+        # Both grades already passed the quality gate; swapping fixed/float
+        # is not a fresh startup and must not reset the stabilization clock.
+        if self.grade is None or received-self.fix_at >= self.config['sensor_timeout_s']:
             self.stable_since = received
+        self.jump_streak = 0
         self.grade, self.fix_at, self.velocity_valid = grade, received, True
         self.position, self.antenna_velocity = position, velocity[:2]
         self.previous_fix = (position, velocity[:2], received)
@@ -86,7 +89,9 @@ class RtkImuFeedback:
         if not (self.velocity_valid and self.position_ready(now)):
             return None
         east, north = self.antenna_velocity
-        if math.hypot(east, north) < 0.25:
+        threshold = max(self.config.get('course_min_speed_mps', .25),
+                        self.config.get('course_speed_accuracy_factor', 3.) * self.fix['speed_accuracy_mps'])
+        if math.hypot(east, north) < threshold:
             return None
         return math.atan2(north, east)
 
@@ -114,7 +119,7 @@ class RtkImuFeedback:
             if not (self.position_ready(t) and self.heading_ready(t)):
                 return
             self.initialized = True
-            self.last_map_rotation = observation['body_yaw_enu_rad']
+            self.last_map_rotation = wrap(observation['body_yaw_enu_rad']-self.yaw)
             self.last_gyro_at, self.last_rate = t, rate
         else:
             dt = t-self.last_gyro_at
@@ -143,7 +148,8 @@ class RtkImuFeedback:
                 # Magnetic heading only anchors the start; the measured travel
                 # direction re-anchors it while moving, gyro carries it at rest.
                 absolute_yaw = wrap(self.yaw+self.last_map_rotation)
-                course = self.course_yaw(t)
+                # Turning/antenna motion must not be mistaken for body heading.
+                course = self.course_yaw(t) if abs(rate) < .15 else None
                 if course is not None:
                     error = wrap(course-absolute_yaw)
                     if abs(error) < 1.2:

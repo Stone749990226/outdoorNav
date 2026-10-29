@@ -306,10 +306,7 @@ export function ABWorkspace() {
               role="img"
               tabIndex={0}
               aria-label={description}
-              onClick={(event) => {
-                event.stopPropagation();
-                setMessage(description);
-              }}
+              onClick={() => setMessage(description)}
               onFocus={() => setMessage(description)}
             >
               <title>{description}</title>

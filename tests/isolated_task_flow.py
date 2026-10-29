@@ -18,7 +18,9 @@ if not Path('/.dockerenv').is_file():
     raise SystemExit('Run only inside the local test Docker container, never on the robot')
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--rtk-imu',action='store_true',help='No external odometry: GNSS Doppler + binary WIT packets only')
+parser.add_argument('--field-policy',action='store_true',help='Exercise the real field policy with three-metre arrivals and temporary blockage')
 args=parser.parse_args()
+if args.field_policy and not args.rtk_imu:parser.error('--field-policy requires --rtk-imu')
 os.environ.update(ROS_DOMAIN_ID='94',ROS_LOCALHOST_ONLY='1',RMW_IMPLEMENTATION='rmw_fastrtps_cpp')
 import rclpy
 from rclpy.node import Node
@@ -70,6 +72,12 @@ if args.rtk_imu:
         'base_from_imu':[[1.,0.,0.,0.],[0.,1.,0.,0.],[0.,0.,1.,0.],[0.,0.,0.,1.]],
         'magnetic_declination_rad':0.,'yaw_std_deg':1.,'mounting_confirmed':True,
         'reference_confirmed':True,'quality_confirmed':True}
+if args.field_policy:
+    field=json.loads((ROOT/'deploy/lynx/robot.fieldtest.json').read_text())
+    for key in (*DEFAULTS,'scan_range_min_m'):
+        if key in field:config[key]=field[key]
+    # Hardware chassis is deliberately absent in the isolated virtual test.
+    config.update(require_chassis_ready=False,auto_activate=True)
 (RUN/'synthetic-only.json').write_text(json.dumps(config,indent=2))
 launch=f'''from launch import LaunchDescription
 from launch.actions import GroupAction, IncludeLaunchDescription
@@ -110,6 +118,7 @@ class VirtualBase(Node):
         self.trace=[]
         self.events=[]
         self.nonzero_commands=0
+        self.closed_ring=False
         self.odom=None if args.rtk_imu else self.create_publisher(Odometry,config['odom_topic'],10)
         self.cloud=self.create_publisher(PointCloud2,config['cloud_topic'],10)
         self.static=self.create_publisher(TFMessage,'/tf_static',QoSProfile(depth=10,durability=DurabilityPolicy.TRANSIENT_LOCAL))
@@ -154,7 +163,7 @@ class VirtualBase(Node):
             odom.pose.pose.orientation.z,odom.pose.pose.orientation.w=math.sin(yaw/2),math.cos(yaw/2)
             odom.twist.twist.linear.x,odom.twist.twist.angular.z=self.v,self.w
             if self.odom is not None:self.odom.publish(odom)
-            self.cloud.publish(point_cloud2.create_cloud(Header(stamp=stamp,frame_id='isolated_lidar'),self.fields,self.rays))
+            self.cloud.publish(point_cloud2.create_cloud(Header(stamp=stamp,frame_id='isolated_lidar'),self.fields,([(4.*math.cos(i*math.pi/360),4.*math.sin(i*math.pi/360),.5) for i in range(720)] if self.closed_ring else self.rays)))
             self.epoch+=50
             lat=bundle['origin_wgs84']['latitude']+math.degrees(self.y/self.north)
             lon=bundle['origin_wgs84']['longitude']+math.degrees(self.x/self.east)
@@ -189,6 +198,7 @@ class VirtualBase(Node):
                 'localization_mode':config['localization_mode'],'external_odometry_published':self.odom is not None,
                 'x':self.x,'y':self.y,'yaw':self.yaw,'v':self.v,'w':self.w,
                 'start':a,'direction':direction,'nonzero_commands':self.nonzero_commands,
+                'field_policy':args.field_policy,'arrival_tolerance_m':config['fixed_arrival_m'],
                 'heading_stream':self.heading_stream,'isolation_failure':self.isolation_failure,'backend_pid':backend.pid if backend else None}
 
 
@@ -218,6 +228,9 @@ class Control(BaseHTTPRequestHandler):
         if self.path=='/heading' and type(data.get('stream')) is bool:
             with virtual.lock:
                 virtual.heading_stream=data['stream']
+            self.reply({'ok':True})
+        elif self.path=='/blockage' and type(data.get('blocked')) is bool:
+            with virtual.lock:virtual.closed_ring=data['blocked']
             self.reply({'ok':True})
         elif self.path=='/event':
             virtual.events.append(data);self.reply({'ok':True})
