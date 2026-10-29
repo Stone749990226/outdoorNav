@@ -14,6 +14,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+try:
+    from .battery import BatteryMonitor
+except ImportError:
+    from battery import BatteryMonitor
+
 ROOT = Path(__file__).resolve().parent
 # One slider trades picture quality for bandwidth. Each anchor is
 # (level, width_px, ffmpeg -q:v); values between anchors are interpolated.
@@ -153,6 +158,8 @@ class Camera:
 class Service:
     def __init__(self, config):
         self.config = config
+        self.battery = BatteryMonitor(config.get('battery_host', '10.21.33.103'),
+                                      config.get('battery_port', 30004))
         self.cameras = {name: Camera(name, url, config)
                         for name, url in config['cameras'].items()}
         current = self.settings()
@@ -226,6 +233,9 @@ HTML = """<!doctype html><meta charset="utf-8"><title>山猫相机</title>
  body{font-family:system-ui,sans-serif;margin:0;background:#111;color:#eee}
  header{padding:10px 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#1b1b1b}
  .controls{padding:8px 14px;display:flex;gap:18px;align-items:center;flex-wrap:wrap;background:#161616;font-size:13px}
+ #battery{padding:5px 10px;border:1px solid #526259;border-radius:6px;color:#b9ec9f}
+ #battery.low{color:#ffbf69;border-color:#ffbf69}
+ #battery.unavailable{color:#a8b1b6;border-color:#526259}
  .controls label{display:flex;gap:8px;align-items:center}
  input[type=range]{width:180px;accent-color:#2b6cb0}
  button{padding:6px 14px;border:1px solid #444;background:#222;color:#eee;border-radius:6px;cursor:pointer}
@@ -234,7 +244,7 @@ HTML = """<!doctype html><meta charset="utf-8"><title>山猫相机</title>
  img{display:block;width:100%;max-width:1280px;margin:10px auto;background:#000;min-height:200px}
  small{opacity:.75}
 </style>
-<header><strong>山猫相机</strong><span id="cams"></span><small id="info">连接中…</small></header>
+<header><strong>山猫相机</strong><span id="cams"></span><strong id="battery" role="status" aria-live="polite">电量读取中…</strong><small id="info">连接中…</small></header>
 <div class="controls">
   <label>画质/带宽 <input id="level" type="range" min="0" max="100" step="1" value="55"><small id="levelText"></small></label>
   <label>更新间隔 <input id="interval" type="range" min="0" max="1000" step="1" value="500"><small id="intervalText"></small></label>
@@ -367,6 +377,24 @@ document.getElementById('level').oninput = ()=>{ labels();
 document.getElementById('level').onchange = ()=>applySettings(true);
 document.getElementById('interval').oninput = labels;
 document.getElementById('interval').onchange = ()=>applySettings(true);
+async function loadBattery(){
+  const badge = document.getElementById('battery');
+  try {
+    const r = await fetchWithTimeout('api/battery', 3000);
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const b = await r.json();
+    if(!b.available){
+      badge.textContent = b.percent != null ? '电量已过期（上次 '+b.percent+'%）' : '电量暂不可用';
+      badge.className = 'unavailable';
+    } else {
+      badge.textContent = '电量 '+b.percent+'%'+(b.charging === true ? ' · 充电中' : '');
+      badge.className = b.percent <= 20 ? 'low' : '';
+    }
+    badge.title = '本体实际状态'+(b.age_s != null ? ' · '+b.age_s.toFixed(1)+' 秒前更新' : '')+
+      (b.voltage_v != null ? ' · '+b.voltage_v.toFixed(1)+' V' : '');
+  } catch(e) { badge.textContent = '电量连接中断'; badge.className = 'unavailable'; }
+}
+loadBattery(); setInterval(loadBattery, 5000);
 loadStatus(); setInterval(loadStatus, 10000);
 </script>"""
 
@@ -392,6 +420,9 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path in ('/', '/index.html'):
             self._send(200, HTML.encode(), 'text/html; charset=utf-8')
+            return
+        if parsed.path == '/api/battery':
+            self._send(200, json.dumps(self.service.battery.snapshot()).encode())
             return
         if parsed.path == '/api/cameras':
             self._send(200, json.dumps(self.service.status()).encode())
@@ -451,6 +482,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        service.battery.stop()
         for camera in service.cameras.values():
             camera.stop()
         server.server_close()
