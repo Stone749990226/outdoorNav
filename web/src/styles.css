@@ -2182,3 +2182,47 @@ svg text {
   border-color: #ff994d;
   color: #ffb779;
 }
+
+/* Read-only Nav2 costmap viewer, using the same HTTP tunnel as navigation. */
+.costmap-panel {
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+}
+.costmap-controls {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.costmap-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.costmap-controls select {
+  max-width: 100%;
+  background: var(--panel);
+  color: inherit;
+  padding: 5px;
+}
+.costmap-canvas {
+  width: 100%;
+  height: min(60vh, 600px);
+  min-height: 240px;
+  background: #323c45;
+  display: block;
+  margin: 10px 0;
+}
+.costmap-panel p {
+  padding: 5px 0;
+  font-size: 12px;
+}
+.costmap-toggle {
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin: 8px 0;
+}

@@ -89,6 +89,7 @@ class Navigation(Node):
         self.clock_rewound = False
         self.localization = "no_fix"
         self.global_map, self.local_map = None, None
+        self.costmap_view_cache = {}
         self.raw_command, self.raw_received = Twist(), 0.0
         self.velocity, self.velocity_at = (math.inf, math.inf), 0.0
         self.owner, self.stopping = None, True
@@ -216,6 +217,48 @@ class Navigation(Node):
     def on_local(self, msg):
         self.local_map = msg
         self.mark("local_map")
+
+    def costmap_snapshot(self, layer):
+        from outdoornav.api import ApiError
+        from outdoornav.costmap_view import grid_snapshot
+        if layer not in ('local', 'global'):
+            raise ApiError(404, 'Unknown costmap layer')
+        with self.state_lock:
+            message = self.local_map if layer == 'local' else self.global_map
+            received = self.stats.get(layer + '_map')
+        if message is None or received is None:
+            raise ApiError(503, 'Waiting for ' + layer + ' costmap')
+        frame = message.header.frame_id
+        robot, path = None, []
+        try:
+            transform = self.tf.lookup_transform(frame, self.base_frame, rclpy.time.Time())
+            t, q = transform.transform.translation, transform.transform.rotation
+            robot = {'x': t.x, 'y': t.y, 'yaw': yaw(q),
+                     'age_s': max(0., self.get_clock().now().nanoseconds/1e9 -
+                                  transform.header.stamp.sec - transform.header.stamp.nanosec/1e9)}
+        except Exception:
+            pass  # No TF is displayed as unavailable, never as a fabricated pose.
+        try:
+            task = self.tasks.snapshot() or {}
+            points = task.get('execution_path') or []
+            if frame == 'map':
+                path = points
+            elif points:
+                transform = self.tf.lookup_transform(frame, 'map', rclpy.time.Time())
+                t, angle = transform.transform.translation, yaw(transform.transform.rotation)
+                c, s = math.cos(angle), math.sin(angle)
+                path = [{'x': t.x+c*p['x']-s*p['y'], 'y': t.y+s*p['x']+c*p['y']} for p in points]
+        except Exception:
+            pass
+        # Encode once per grid message, not once per viewer poll. No disk writes.
+        cache = self.costmap_view_cache.get(layer)
+        if cache is None or cache[0] is not message:
+            cache = (message, grid_snapshot(message, 0.))
+            self.costmap_view_cache[layer] = cache
+        source_age = self.get_clock().now().nanoseconds/1e9 - cache[1]['stamp_s']
+        age = max(0., time.monotonic()-received, source_age)
+        # Image, overlays and metadata use the grid's own frame (local is odom).
+        return {**cache[1], 'age_s': age, 'stale': age >= 3., 'robot': robot, 'path': path}
 
     def on_odom(self, msg):
         stamp = msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9

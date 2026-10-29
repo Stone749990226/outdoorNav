@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { MapView, type Layers } from "./MapView";
 import { exportAB, planAB, type ABResult } from "./abNavigation";
 import { NavigationPanel } from "./components/NavigationPanel";
+import { CostmapPanel } from "./components/CostmapPanel";
 import {
   ObstaclePanel,
   type ObstacleSelection,
@@ -72,6 +73,7 @@ function referenceResult(route: RoutePreview): ABResult {
 
 export function ABWorkspace() {
   const navigation = useNavigation();
+  const [showCostmap, setShowCostmap] = useState(false);
   const [places, setPlaces] = useState<SemanticPlace[]>(placeData.places);
   const hardware = navigation.status?.mode === "lynx";
   useEffect(() => {
@@ -574,20 +576,31 @@ export function ABWorkspace() {
             显示园区底图
           </button>
         </div>
-        <MapView
-          state={state}
-          layers={layers}
-          mode={blockMode ? "block" : "target"}
-          reference={null}
-          onPick={pick}
-          onRoad={closeRoad}
-          onInfo={setMessage}
-          overlay={overlay}
-          showSurvey={showSurvey}
-          hideRobot={!preview}
-          hideHome
-          hideTasks
-        />
+        <button
+          className="costmap-toggle"
+          data-testid="toggle-costmap"
+          onClick={() => setShowCostmap((v) => !v)}
+        >
+          {showCostmap ? "返回路线地图" : "查看实时代价地图"}
+        </button>
+        {showCostmap ? (
+          <CostmapPanel />
+        ) : (
+          <MapView
+            state={state}
+            layers={layers}
+            mode={blockMode ? "block" : "target"}
+            reference={null}
+            onPick={pick}
+            onRoad={closeRoad}
+            onInfo={setMessage}
+            overlay={overlay}
+            showSurvey={showSurvey}
+            hideRobot={!preview}
+            hideHome
+            hideTasks
+          />
+        )}
         <p data-testid="ab-message">{message}</p>
         {preview?.status === "completed" && (
           <p className="ab-arrived">离线预览已到达</p>

@@ -54,6 +54,9 @@ def serve(backend, port=8765, host="127.0.0.1", web_root=None):
                         return self.respond(200, backend.places.snapshot())
                     if path == "/api/map":
                         return self.respond(200, backend.map_snapshot())
+                    match = re.fullmatch(r"/api/costmaps/(local|global)", path)
+                    if match and hasattr(backend, 'costmap_snapshot'):
+                        return self.respond(200, backend.costmap_snapshot(match[1]))
                     if path == "/api/status":
                         return self.respond(200, backend.status())
                     if path == "/api/obstacles":

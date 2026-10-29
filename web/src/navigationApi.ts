@@ -157,3 +157,20 @@ export const executeGoal = (goal: Point, blocked: string[], placeId?: string) =>
   );
 export const cancelTask = (id: string) =>
   request<NavigationTask>(`/api/tasks/${id}/cancel`, "POST");
+
+export type CostmapSnapshot = {
+  schema_version: number;
+  frame_id: string;
+  width: number;
+  height: number;
+  resolution: number;
+  origin: Point & { yaw: number };
+  stamp_s: number;
+  age_s: number;
+  stale: boolean;
+  image: string;
+  robot: (Point & { yaw: number; age_s: number }) | null;
+  path: Point[];
+};
+export const getCostmap = (layer: "local" | "global", signal?: AbortSignal) =>
+  request<CostmapSnapshot>(`/api/costmaps/${layer}`, "GET", undefined, signal);

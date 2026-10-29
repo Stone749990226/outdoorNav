@@ -181,6 +181,8 @@ curl -s -X POST -H 'Content-Type: application/json' -d '{"active":true}' http://
 
 ## 网页和客户端
 
+导航工作区可切换到只读代价图，查看局部／全局图、车位姿和当前执行路径；无需 RViz，见 [网页代价地图](../../docs/costmap-web.md)。
+
 远程看车状态用相机网页工具，说明见 [相机网页](../../docs/camera-view.md)。
 
 启动后访问 **http://10.29.1.4:8765/**，无需电脑运行 Vite 或 SSH 转发。
