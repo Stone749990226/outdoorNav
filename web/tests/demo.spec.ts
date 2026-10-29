@@ -1,5 +1,4 @@
 import { test, expect } from "@playwright/test";
-import fs from "node:fs/promises";
 import { campus, choose, planRoute, start, shortGoal } from "./mapHelpers";
 
 test.beforeEach(async ({ page }) => {
@@ -17,16 +16,9 @@ test("measured patrol completes without old map references", async ({
   await page.getByRole("button", { name: "10×", exact: true }).click();
   for (let i = 0; i < 40; i++) await page.clock.runFor(1000);
   await expect(page.getByTestId("completion-card")).toBeVisible();
-  await page.locator(".export-menu summary").click();
-  const [download] = await Promise.all([
-    page.waitForEvent("download"),
-    page.getByRole("button", { name: "路线 JSON", exact: false }).click(),
-  ]);
-  const data = JSON.parse(await fs.readFile((await download.path())!, "utf8"));
-  expect(data.simulation_only).toBe(true);
-  expect(data.completed_task_ids).toHaveLength(3);
-  expect(data.blocked_roads).toEqual([]);
-  expect(data.quality_status).toBe("survey_dgps_unverified");
+  await expect(
+    page.getByRole("button", { name: /导出本次路线|路线 JSON|途经点 CSV/ }),
+  ).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

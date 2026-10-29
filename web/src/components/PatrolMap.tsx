@@ -1,5 +1,4 @@
 import {
-  ArrowUpRight,
   Ban,
   Check,
   Crosshair,
@@ -44,7 +43,6 @@ export function PatrolMap({ model }: { model: PatrolModel }) {
     notify,
     pick,
     roadClick,
-    routeDownload,
   } = model;
   return (
     <section className="map-panel panel">
@@ -52,6 +50,7 @@ export function PatrolMap({ model }: { model: PatrolModel }) {
         <div className="map-tabs">
           <button
             className={!layers.access ? "active" : ""}
+            aria-pressed={!layers.access}
             onClick={() =>
               setLayers((l) => ({
                 ...l,
@@ -65,6 +64,7 @@ export function PatrolMap({ model }: { model: PatrolModel }) {
           </button>
           <button
             className={layers.access ? "active" : ""}
+            aria-pressed={layers.access}
             onClick={() => setLayers((l) => ({ ...l, access: true }))}
           >
             通行性地图
@@ -91,6 +91,7 @@ export function PatrolMap({ model }: { model: PatrolModel }) {
           </button>
           <button
             title="图层设置"
+            aria-pressed={layerMenu}
             className={layerMenu ? "active" : ""}
             onClick={() => setLayerMenu(!layerMenu)}
           >
@@ -303,9 +304,6 @@ export function PatrolMap({ model }: { model: PatrolModel }) {
             到访 {state.completed.length} 个巡检点 · 行走{" "}
             {(state.traveled * scale).toFixed(0)} 米 · 重规划 {state.replans} 次
           </p>
-          <button onClick={routeDownload}>
-            导出本次路线 <ArrowUpRight size={14} />
-          </button>
         </div>
       )}
       <div className="map-status">

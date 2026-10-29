@@ -1,8 +1,6 @@
 import {
   ArrowUpRight,
-  ChevronRight,
   CircleHelp,
-  Download,
   Map as MapIcon,
   Route,
   Sparkles,
@@ -35,12 +33,8 @@ export default function App() {
     toast,
     setToast,
     fileRef,
-    routeValid,
     target,
     notify,
-    mapDownload,
-    routeDownload,
-    csvDownload,
     setHelp,
     help,
   } = patrol;
@@ -120,26 +114,6 @@ export default function App() {
               A→B 规划
             </button>
           </div>
-          {workspaceMode === "patrol" && (
-            <details className="export-menu">
-              <summary>
-                <Download size={16} />
-                导出数据
-                <ChevronRight size={14} />
-              </summary>
-              <div className="dropdown">
-                <button onClick={mapDownload}>
-                  地图 JSON<span>实测中心线路网</span>
-                </button>
-                <button onClick={routeDownload} disabled={!routeValid}>
-                  路线 JSON<span>完整折线与任务顺序</span>
-                </button>
-                <button onClick={csvDownload} disabled={!routeValid}>
-                  途经点 CSV<span>局部坐标与参考朝向</span>
-                </button>
-              </div>
-            </details>
-          )}
           <button
             className="primary demo-button"
             onClick={() => {
@@ -254,8 +228,8 @@ export default function App() {
               <p>
                 <b>04</b>
                 <span>
-                  <strong>探索与导出</strong>
-                  重置后修改任务、点选起点或封路。导出局部米制地图、路线与关键途经点。
+                  <strong>探索地图</strong>
+                  重置后修改任务、点选起点或封路，查看道路与导航路线。
                 </span>
               </p>
             </div>

@@ -2365,3 +2365,21 @@ svg text {
     margin-left: 0;
   }
 }
+
+/* Layer state remains apparent even before reading the action label. */
+.map-toolbar button[aria-pressed="true"],
+.map-toolbar button[aria-expanded="true"] {
+  background: #b9ec9f22;
+  color: var(--mint);
+  box-shadow: inset 0 0 0 1px #b9ec9f66;
+  border-radius: 5px;
+}
+.map-toolbar .layer-toggle {
+  padding: 6px 10px;
+  border-radius: 5px;
+}
+.map-toolbar .layer-toggle[aria-pressed="false"] {
+  color: #99aaa3;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px #ffffff18;
+}

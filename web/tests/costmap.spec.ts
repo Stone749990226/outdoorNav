@@ -61,6 +61,27 @@ test("read-only costmap view switches frames, shows stale data and returns to go
     return route.fulfill({ json: { obstacles: [] } });
   });
   await page.goto("/");
+  await expect(
+    page.getByRole("button", { name: "原始 / 滤波", exact: true }),
+  ).toHaveCount(0);
+  const network = page.getByRole("button", {
+    name: "显示道路网络",
+    exact: true,
+  });
+  await expect(network).toHaveAttribute("aria-pressed", "false");
+  await network.click();
+  await expect(
+    page.getByRole("button", { name: "隐藏道路网络", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "隐藏园区底图", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "显示园区底图", exact: true }),
+  ).toHaveAttribute("aria-pressed", "false");
+  await page.getByRole("button", { name: "路线详情", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: /路线 JSON|途经点 CSV|地图 JSON/ }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "收起工具", exact: true }).click();
   await page.getByTestId("toggle-costmap").click();
   await expect(page.getByTestId("costmap-layer-local")).toBeVisible();
   await expect(page.getByTestId("costmap-layer-global")).toBeVisible();

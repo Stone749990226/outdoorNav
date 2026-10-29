@@ -1,14 +1,7 @@
-import {
-  Download,
-  Flag,
-  LocateFixed,
-  Play,
-  RotateCcw,
-  Route,
-} from "lucide-react";
+import { Flag, LocateFixed, Play, RotateCcw, Route } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { MapView, type Layers } from "./MapView";
-import { exportAB, planAB, type ABResult } from "./abNavigation";
+import { planAB, type ABResult } from "./abNavigation";
 import { NavigationPanel } from "./components/NavigationPanel";
 import { CostmapPanel } from "./components/CostmapPanel";
 import {
@@ -16,7 +9,6 @@ import {
   type ObstacleSelection,
 } from "./components/ObstaclePanel";
 import { useObstacles } from "./hooks/useObstacles";
-import { download, exportMap } from "./export";
 import { useNavigation } from "./hooks/useNavigation";
 import { dist, home, mapToSvg, pathD, roads, scale, toMeters } from "./map";
 import {
@@ -30,7 +22,7 @@ import placeData from "../../scenes/north_campus/places.json" with { type: "json
 import { snap } from "./planner";
 import { advance, initial } from "./simulation";
 import type { Point, Simulation } from "./types";
-import { extractWaypoints, serializeWaypoints, waypointCSV } from "./waypoints";
+import { extractWaypoints } from "./waypoints";
 
 const defaultLayers: Layers = {
   basemap: true,
@@ -99,8 +91,7 @@ export function ABWorkspace() {
   const [message, setMessage] = useState(
     "选择目标；在线时 A 自动使用机器人位置",
   );
-  const [layers, setLayers] = useState(defaultLayers),
-    [showSurvey, setShowSurvey] = useState(false);
+  const [layers, setLayers] = useState(defaultLayers);
   const [preview, setPreview] = useState<Simulation | null>(null);
   const generation = useRef(0);
   const online =
@@ -569,28 +560,30 @@ export function ABWorkspace() {
         <div className="map-toolbar">
           {!showCostmap && (
             <>
-              <button onClick={() => setShowSurvey((v) => !v)}>
-                原始 / 滤波
-              </button>
               <button
+                className="layer-toggle"
+                aria-pressed={layers.network}
                 onClick={() =>
                   setLayers((v) => ({ ...v, network: !v.network }))
                 }
               >
-                显示道路网络
+                {layers.network ? "隐藏道路网络" : "显示道路网络"}
               </button>
               <button
+                className="layer-toggle"
+                aria-pressed={layers.basemap}
                 onClick={() =>
                   setLayers((v) => ({ ...v, basemap: !v.basemap }))
                 }
               >
-                显示园区底图
+                {layers.basemap ? "隐藏园区底图" : "显示园区底图"}
               </button>
             </>
           )}
           <button
             className="costmap-toggle"
             data-testid="toggle-costmap"
+            aria-pressed={showCostmap}
             onClick={() => setShowCostmap((v) => !v)}
           >
             {showCostmap ? "返回路线地图" : "查看实时代价地图"}
@@ -599,7 +592,7 @@ export function ABWorkspace() {
             aria-expanded={showTools}
             onClick={() => setShowTools((v) => !v)}
           >
-            {showTools ? "收起工具" : "路线与导出"}
+            {showTools ? "收起工具" : "路线详情"}
           </button>
         </div>
         {showCostmap ? (
@@ -614,7 +607,6 @@ export function ABWorkspace() {
             onRoad={closeRoad}
             onInfo={setMessage}
             overlay={overlay}
-            showSurvey={showSurvey}
             hideRobot={!preview}
             hideHome
             hideTasks
@@ -645,7 +637,7 @@ export function ABWorkspace() {
               }}
             />
           )}
-          <h3>路线与导出</h3>
+          <h3>路线详情</h3>
           <p>
             绿色：道路参考路线（尚未确认无障碍）· 蓝色虚线：Nav2 当前执行路径
           </p>
@@ -675,40 +667,6 @@ export function ABWorkspace() {
           >
             <Play size={15} />
             离线动画预览
-          </button>
-          <button
-            disabled={!result?.plan}
-            onClick={() =>
-              result &&
-              b &&
-              download(
-                "route.json",
-                JSON.stringify(exportAB(result.points[0], b, result), null, 2),
-              )
-            }
-          >
-            <Download size={15} />
-            路线 JSON
-          </button>
-          <button
-            disabled={!result?.plan}
-            onClick={() =>
-              result &&
-              download(
-                "waypoints.csv",
-                waypointCSV(serializeWaypoints(result.waypoints)),
-                "text/csv;charset=utf-8",
-              )
-            }
-          >
-            途经点 CSV
-          </button>
-          <button
-            onClick={() =>
-              download("map.json", JSON.stringify(exportMap(blocked), null, 2))
-            }
-          >
-            地图 JSON
           </button>
         </aside>
       )}
