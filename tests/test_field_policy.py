@@ -82,6 +82,8 @@ def test_chassis_not_ready_is_visible_before_accepting_navigation():
     assert 'not_rl_control' in chassis_blockers(4, 0x3002, .1, 1, .1)
     assert 'navigation_usage_mode_unverified' in chassis_blockers(17, 0x3002, .1, None, .1)
     assert 'motion_feedback_stale' in chassis_blockers(17, 0x3002, 2, 1, .1)
+    # Usage mode is polled once per second; a three-second-old value is unusable.
+    assert 'navigation_usage_mode_unverified' in chassis_blockers(17, 0x3002, .1, 1, 4.)
 
 
 def test_field_profile_keeps_obstacle_layer_and_exposes_wait_and_stop_limits():

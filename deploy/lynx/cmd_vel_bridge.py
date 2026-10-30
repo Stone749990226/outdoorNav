@@ -52,7 +52,8 @@ class Bridge(Node):
                     self.mode, self.mode_at = mode, time.monotonic()
             except OSError:
                 pass
-            self.closing.wait(3)
+            # A posture/usage change should show up within about a second.
+            self.closing.wait(1)
 
     def receive(self, message):
         self.v = float(message.linear.x)

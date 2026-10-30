@@ -44,6 +44,6 @@ def chassis_blockers(state, gait, motion_age, mode, mode_age):
         blockers.append('not_rl_control')
     if gait not in (0x3002, 0x3003):
         blockers.append('not_navigation_gait')
-    if mode != 1 or not math.isfinite(mode_age) or not 0 <= mode_age < 8.:
+    if mode != 1 or not math.isfinite(mode_age) or not 0 <= mode_age < 3.:
         blockers.append('navigation_usage_mode_unverified')
     return blockers
