@@ -70,4 +70,4 @@ ROS 节点始终使用 Humble 对应的系统 Python。启动程序不会安装�
 
 运行日志、实际参数、进程身份与真值/估计轨迹统一写入 `artifacts/runs/<run_id>/`。
 
-[架构](docs/ARCHITECTURE.md) · [实测数据](docs/DATA.md) · [验证记录](docs/VALIDATION.md) · [相机网页](docs/camera-view.md) · [网页代价地图](docs/costmap-web.md) · [出门前检查](docs/outdoor-readiness-audit-2026-10-29.md)
+[架构](docs/ARCHITECTURE.md) · [实测数据](docs/DATA.md) · [验证记录](docs/VALIDATION.md) · [相机网页](docs/camera-view.md) · [网页代价地图](docs/costmap-web.md) · [出门前检查](docs/outdoor-readiness-audit-2026-10-29.md) · [前雷达实测](docs/lidar-field-notes.md)

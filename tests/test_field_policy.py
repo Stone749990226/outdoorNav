@@ -91,6 +91,9 @@ def test_field_profile_keeps_obstacle_layer_and_exposes_wait_and_stop_limits():
     assert cfg['obstacle_layer_enabled'] is True
     assert cfg['footprint_radius_m'] == .6
     assert cfg['scan_range_min_m'] == .5
+    # Measured ground plane is z=-0.42, so this band starts ~0.12 m above ground
+    # and deliberately ignores obstacles taller than ~0.72 m.
+    assert cfg['cloud_min_height_m'] == -.3 and cfg['cloud_max_height_m'] == .3
     assert cfg['inflation_padding_m'] == .1
     assert cfg['allow_float_during_fixed_task'] is True
     assert cfg['stopped_linear_mps'] == .03
