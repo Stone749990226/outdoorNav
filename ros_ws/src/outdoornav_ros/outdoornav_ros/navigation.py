@@ -27,7 +27,7 @@ from unique_identifier_msgs.msg import UUID
 
 from outdoornav.api import ApiError, serve
 from outdoornav.bundle import is_free, load_bundle, masks
-from outdoornav.routing import RouteGuidance, plan_route, validate_point
+from outdoornav.routing import RouteGuidance, validate_point
 from outdoornav.tasks import TaskStore, TERMINAL, ProgressBudget
 from outdoornav.outdoor import OutdoorService
 from .maps import LATCHED, Maps
@@ -381,7 +381,7 @@ class Navigation(Node):
 
     def validated(self, payload):
         goal, blocked, route = self.outdoor.validated(payload)
-        if not self.hardware and not is_free(self.free, self.bundle['grid'], goal):
+        if not self.hardware and not self.outdoor.preference and not is_free(self.free, self.bundle['grid'], goal):
             raise ValueError('Destination is not in traversable scene space')
         return goal, blocked, route
 
@@ -737,12 +737,9 @@ class Navigation(Node):
                 raise InterruptedError("Task canceled before planning")
             self.tasks.update(task_id, state="planning")
             position = await self.wait_for_ready_pose(task_id)
-            route = plan_route(
-                self.bundle["network"],
-                position,
-                state["goal"],
-                state["blocked_road_ids"],
-            )
+            # Preview and execution use exactly the same road-preference policy.
+            route = self.outdoor.plan_from(position, state["goal"], state["blocked_road_ids"],
+                                           state.get("road_offroad_cost"))
             await self.prepare_route(route, task_id)
             tolerance = state.get("arrival_tolerance_m") or self.arrival_tolerance
             goal_point = state["goal"]

@@ -22,6 +22,15 @@ export type NavigationTask = {
   reason: string | null;
 };
 export type NavigationStatus = {
+  planning_policy?: {
+    mode: "weighted" | "centerline";
+    road_cost?: number;
+    offroad_cost?: number;
+    resolution?: number;
+    profile?: string;
+    bounds?: number[];
+    keepouts?: number[][][];
+  };
   mode?: "lynx" | "simulation";
   gnss?: {
     valid?: boolean;
@@ -133,7 +142,12 @@ export const requestId = () =>
   Array.from(crypto.getRandomValues(new Uint8Array(16)), (value) =>
     value.toString(16).padStart(2, "0"),
   ).join("");
-const payload = (goal: Point, blocked: string[], placeId?: string) => ({
+const payload = (
+  goal: Point,
+  blocked: string[],
+  placeId?: string,
+  offroadCost?: number,
+) => ({
   frame_id: "map",
   scene_version: bundle.scene_version,
   route_version: bundle.route_version,
@@ -141,6 +155,7 @@ const payload = (goal: Point, blocked: string[], placeId?: string) => ({
   blocked_road_ids: blocked,
   request_id: requestId(),
   ...(placeId ? { place_id: placeId } : {}),
+  ...(offroadCost !== undefined ? { road_offroad_cost: offroadCost } : {}),
 });
 export const getStatus = (signal?: AbortSignal) =>
   request<NavigationStatus>("/api/status", "GET", undefined, signal);
@@ -148,13 +163,23 @@ export const previewRoute = (
   goal: Point,
   blocked: string[],
   placeId?: string,
+  offroadCost?: number,
 ) =>
-  request<RoutePreview>("/api/plans", "POST", payload(goal, blocked, placeId));
-export const executeGoal = (goal: Point, blocked: string[], placeId?: string) =>
+  request<RoutePreview>(
+    "/api/plans",
+    "POST",
+    payload(goal, blocked, placeId, offroadCost),
+  );
+export const executeGoal = (
+  goal: Point,
+  blocked: string[],
+  placeId?: string,
+  offroadCost?: number,
+) =>
   request<NavigationTask>(
     "/api/tasks",
     "POST",
-    payload(goal, blocked, placeId),
+    payload(goal, blocked, placeId, offroadCost),
   );
 export const cancelTask = (id: string) =>
   request<NavigationTask>(`/api/tasks/${id}/cancel`, "POST");

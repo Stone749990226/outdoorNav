@@ -21,6 +21,33 @@ class OutdoorService:
         self.status = status
         self.config = {**DEFAULTS, **(config or {})}
         self.state_lock = threading.RLock()
+        self.preference = None
+        if self.config.get('road_preference_enabled'):
+            from .road_preference import RoadPreference
+            self.preference = RoadPreference(bundle, self.config['road_offroad_cost'],
+                self.config['road_preference_resolution_m'], self.config.get('road_keepout_polygons', []),
+                self.config.get('footprint_radius_m', .6))
+
+    def planning_policy(self):
+        return self.preference.policy() if self.preference else {'mode': 'centerline'}
+
+    def planning_cost(self, payload):
+        value = payload.get('road_offroad_cost')
+        if value is None:
+            return self.preference.offroad_cost if self.preference else None
+        if not self.preference or type(value) is not int or not 1 <= value <= 99:
+            raise ValueError('road_offroad_cost requires weighted mode and an integer 1..99')
+        return value
+
+    def plan_from(self, start, goal, blocked=(), offroad_cost=None):
+        if self.preference:
+            planner = self.preference
+            if offroad_cost is not None and offroad_cost != planner.offroad_cost:
+                from .road_preference import RoadPreference
+                planner = RoadPreference(self.bundle, offroad_cost, planner.resolution,
+                                         planner.keepouts, planner.robot_radius)
+            return planner.plan(start, goal, blocked)
+        return plan_route(self.bundle['network'], start, goal, blocked)
 
     def preview(self, payload):
         _, _, route = self.validated(payload)
@@ -31,8 +58,9 @@ class OutdoorService:
         if not isinstance(payload, dict):
             raise ValueError('Request must be an object')
         if set(payload) - {'scene_version', 'route_version', 'frame_id', 'place_id',
-                           'goal', 'blocked_road_ids', 'request_id'}:
+                           'goal', 'blocked_road_ids', 'request_id', 'road_offroad_cost'}:
             raise ValueError('Unknown navigation request fields')
+        self.planning_cost(payload)
         for key in ('scene_version', 'route_version'):
             if payload.get(key) != self.bundle[key]:
                 raise ApiError(409, 'Map version mismatch')
@@ -48,10 +76,14 @@ class OutdoorService:
         else:
             raw = payload.get('goal')
             point = validate_point(raw)
-            projected = snap(self.bundle['network'], point)
-            if projected['distance_m'] > 2:
-                raise ValueError('Select a goal within 2 m of the road network')
-            goal = {**projected['point'], 'enabled': True}
+            if self.preference:
+                self.preference.check_point(point)
+                goal = {**point, 'enabled': True}
+            else:
+                projected = snap(self.bundle['network'], point)
+                if projected['distance_m'] > 2:
+                    raise ValueError('Select a goal within 2 m of the road network')
+                goal = {**projected['point'], 'enabled': True}
             if 'yaw' in raw:
                 angle = raw['yaw']
                 if isinstance(angle, bool) or not isinstance(angle, (int, float)) or not math.isfinite(angle):
@@ -68,22 +100,24 @@ class OutdoorService:
         position = self.status(False)['pose']
         if position is None or not 0 <= position.get('age_s', math.inf) < self.config['sensor_timeout_s']:
             raise ApiError(503, 'No fresh robot position for planning')
-        if snap(self.bundle['network'], position)['distance_m'] > START_RESCUE_DISTANCE_M:
+        if not self.preference and snap(self.bundle['network'], position)['distance_m'] > START_RESCUE_DISTANCE_M:
             raise ValueError(
                 f'Robot is more than {START_RESCUE_DISTANCE_M:.0f} m from the surveyed road network'
             )
-        return goal, blocked, plan_route(self.bundle['network'], position, goal, blocked)
+        return goal, blocked, self.plan_from(position, goal, blocked, self.planning_cost(payload))
 
     def submit(self, payload):
         with self.state_lock:
             goal, blocked = self.target(payload)
+            offroad_cost = self.planning_cost(payload)
             request_id = payload.get('request_id')
             if request_id is not None:
                 if not isinstance(request_id, str) or not re.fullmatch(r'[a-f0-9]{32}', request_id):
                     raise ValueError('request_id must be 32 lowercase hexadecimal characters')
                 if request_id in self.tasks.tasks:
                     old = self.tasks.snapshot(request_id)
-                    if old['goal'] != goal or old['blocked_road_ids'] != blocked:
+                    if (old['goal'] != goal or old['blocked_road_ids'] != blocked
+                            or old.get('road_offroad_cost') != offroad_cost):
                         raise ApiError(409, 'request_id was used for another goal')
                     return old
             if not goal['enabled']:
@@ -96,5 +130,6 @@ class OutdoorService:
             grade = status.get('localization_grade')
             tolerance = self.config[grade + '_arrival_m'] if grade in ('fixed', 'float') else None
             self.tasks.update(result['task_id'], reference_path=route['reference_path'],
-                              localization_grade=grade, arrival_tolerance_m=tolerance, state='accepted')
+                              localization_grade=grade, arrival_tolerance_m=tolerance,
+                              road_offroad_cost=offroad_cost, state='accepted')
             return self.tasks.snapshot(result['task_id'])

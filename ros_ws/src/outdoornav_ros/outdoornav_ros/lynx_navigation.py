@@ -135,6 +135,7 @@ class LynxNavigation(Navigation):
             pose = {**geo['pose'], 'frame_id': 'map', 'stamp_s': 0,
                     'age_s': max(geo.get('fix_age_s') or 0, now - self.geo_at)}
         return {'schema_version': 1, 'mode': 'lynx', 'run_id': 'lynx-outdoor',
+                'planning_policy': self.outdoor.planning_policy() if hasattr(self, 'outdoor') else {'mode': 'centerline'},
                 'scene_version': self.bundle['scene_version'], 'route_version': self.bundle['route_version'],
                 'ready': all(health.values()), 'health': health,
                 'diagnostic': self.diagnostic,

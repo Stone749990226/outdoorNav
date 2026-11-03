@@ -187,7 +187,10 @@ class RouteGuidance:
             self.index += 1
         end, ahead = self.index, distance(position, self.points[self.index])
         # Bound per-replan action calls even for extremely tightly spaced bends.
-        while end + 1 < len(self.points) and ahead < 6.0 and end - self.index < 11:
-            ahead += distance(self.points[end], self.points[end + 1])
+        while end + 1 < len(self.points) and end - self.index < 11:
+            segment = distance(self.points[end], self.points[end + 1])
+            if ahead + segment > 6.0 + 1e-6:
+                break
+            ahead += segment
             end += 1
         return tuple(range(self.index, end + 1))

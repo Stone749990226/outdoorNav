@@ -34,6 +34,9 @@ test("isolated real frontend and Nav2: arrive, cancel, replace, fail and recover
     };
     // The first surveyed segment curves farther ahead. Select real road points
     // rather than extrapolating outside the UI's allowed 2 m road corridor.
+    if (scope.weighted_roads && meters === 1.8) {
+      return {x:raw.x-5*scope.direction[1], y:raw.y+5*scope.direction[0]};
+    }
     const projected = snap(mapToSvg(raw));
     return projected ? toMap(projected.point) : raw;
   };
@@ -115,6 +118,11 @@ test("isolated real frontend and Nav2: arrive, cancel, replace, fail and recover
   }
   const first = await execute(1.8);
   expect(first.value.state).toBe("accepted");
+  if (scope.weighted_roads) {
+    expect((await status()).planning_policy.mode).toBe('weighted');
+    expect(snap(mapToSvg(first.value.goal))!.distance * 0.125).toBeGreaterThan(2);
+    await record('offroad_goal', {task_id:first.value.task_id, original_goal_preserved:true});
+  }
   const duplicate = await request.post(base + "/api/tasks", {
     data: first.payload,
   });

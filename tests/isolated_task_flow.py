@@ -199,6 +199,7 @@ class VirtualBase(Node):
                 'x':self.x,'y':self.y,'yaw':self.yaw,'v':self.v,'w':self.w,
                 'start':a,'direction':direction,'nonzero_commands':self.nonzero_commands,
                 'field_policy':args.field_policy,'arrival_tolerance_m':config['fixed_arrival_m'],
+                'weighted_roads':config.get('road_preference_enabled',False),
                 'heading_stream':self.heading_stream,'isolation_failure':self.isolation_failure,'backend_pid':backend.pid if backend else None}
 
 

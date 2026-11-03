@@ -34,6 +34,7 @@ class Task:
     cancel_requested: bool = False
     localization_grade: str | None = None
     arrival_tolerance_m: float | None = None
+    road_offroad_cost: int | None = None
 
 
 class TaskStore:

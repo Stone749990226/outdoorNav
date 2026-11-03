@@ -31,7 +31,7 @@ curl -s -X POST -H 'Content-Type: application/json' -d '{"active":true}' http://
 bash deploy/lynx/start.sh --diagnostic
 ```
 
-打开网页 `http://<机器人地址>:8765/`，点击道路附近的目标点（最多偏离道路 2 米）即可规划并执行导航。网页可直接切换只读代价图（局部/全局图 + 车位姿 + 执行路径），无需 RViz，见 [网页代价地图](docs/costmap-web.md)；远程看车状态用 [相机网页](docs/camera-view.md)。
+打开网页 `http://<机器人地址>:8765/`，现场档可选择地图范围内的路外终点：参考规划从道路中心低代价连续增加至路边／路外代价，网页滑条可调，先规划再执行；通用配置未启用此策略时仍使用原路网约束。网页可直接切换只读代价图（局部/全局图 + 车位姿 + 执行路径），无需 RViz，见 [网页代价地图](docs/costmap-web.md)；远程看车状态用 [相机网页](docs/camera-view.md)。
 
 **让车动起来的前提**（缺一车就不会走）：
 
@@ -79,4 +79,4 @@ tests/isolated_task_flow.py --rtk-imu # 合成 RTK+IMU 的完整网页→任务�
 
 ## 文档
 
-[架构](docs/ARCHITECTURE.md) · [实测数据](docs/DATA.md) · [验证记录](docs/VALIDATION.md) · [实施计划](docs/plan.md) · [山猫部署](deploy/lynx/README.md) · [相机网页](docs/camera-view.md) · [网页代价地图](docs/costmap-web.md) · [出门前检查](docs/outdoor-readiness-audit-2026-10-29.md) · [前雷达实测](docs/lidar-field-notes.md)
+[架构](docs/ARCHITECTURE.md) · [实测数据](docs/DATA.md) · [验证记录](docs/VALIDATION.md) · [实施计划](docs/plan.md) · [山猫部署](deploy/lynx/README.md) · [相机网页](docs/camera-view.md) · [网页代价地图](docs/costmap-web.md) · [出门前检查](docs/outdoor-readiness-audit-2026-10-29.md) · [前雷达实测](docs/lidar-field-notes.md) · [主路优先与路外终点](docs/road-preference.md)

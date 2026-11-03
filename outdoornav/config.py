@@ -27,6 +27,9 @@ DEFAULTS = {
     'require_chassis_ready': False,
     'auto_activate': False,
     'respect_place_heading': True,
+    'road_preference_enabled': False,
+    'road_offroad_cost': 50,
+    'road_preference_resolution_m': 0.5,
     'stopped_linear_mps': 0.01,
     'stopped_angular_rps': 0.01,
     'stop_hold_s': 1.0,
@@ -79,6 +82,18 @@ def load_robot_config(path):
             and 0 < config['stopped_angular_rps'] <= .05
             and 0 < config['transform_tolerance_s'] <= 1):
         raise ValueError('Invalid recovery, stopping or costmap limits')
+    if not (type(config['road_offroad_cost']) is int and 1 <= config['road_offroad_cost'] < 100
+            and .1 <= config['road_preference_resolution_m'] <= 1.):
+        raise ValueError('Road preference requires soft cost 1..99 and resolution 0.1..1 m')
+    config.setdefault('road_keepout_polygons', [])
+    if not isinstance(config['road_keepout_polygons'], list):
+        raise ValueError('road_keepout_polygons must be a list')
+    for polygon in config['road_keepout_polygons']:
+        if (not isinstance(polygon, list) or len(polygon) < 3 or any(
+                not isinstance(p, list) or len(p) != 2 or any(
+                    isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in p)
+                for p in polygon)):
+            raise ValueError('Keepout polygons need at least three finite [x,y] vertices')
     for key in ('antenna_xy_m', 'map_offset_xy_m'):
         values = config.get(key)
         if not isinstance(values, list) or len(values) != 2 or not all(

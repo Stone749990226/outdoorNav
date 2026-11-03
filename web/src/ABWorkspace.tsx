@@ -1,5 +1,5 @@
 import { Flag, LocateFixed, Play, RotateCcw, Route } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MapView, type Layers } from "./MapView";
 import { planAB, type ABResult } from "./abNavigation";
 import { NavigationPanel } from "./components/NavigationPanel";
@@ -10,7 +10,17 @@ import {
 } from "./components/ObstaclePanel";
 import { useObstacles } from "./hooks/useObstacles";
 import { useNavigation } from "./hooks/useNavigation";
-import { dist, home, mapToSvg, pathD, roads, scale, toMeters } from "./map";
+import {
+  bundle,
+  dist,
+  home,
+  mapToSvg,
+  pathD,
+  roads,
+  scale,
+  toMeters,
+  toMap,
+} from "./map";
 import {
   compatible,
   previewRoute,
@@ -20,6 +30,7 @@ import {
 } from "./navigationApi";
 import placeData from "../../scenes/north_campus/places.json" with { type: "json" };
 import { snap } from "./planner";
+import { roadPreferenceField, roadPreferenceImage } from "./roadPreference";
 import { advance, initial } from "./simulation";
 import type { Point, Simulation } from "./types";
 import { extractWaypoints } from "./waypoints";
@@ -69,6 +80,11 @@ export function ABWorkspace() {
   const [showTools, setShowTools] = useState(false);
   const [places, setPlaces] = useState<SemanticPlace[]>(placeData.places);
   const hardware = navigation.status?.mode === "lynx";
+  const planningPolicy = navigation.status?.planning_policy;
+  const weighted = planningPolicy?.mode === "weighted";
+  const [showPreference, setShowPreference] = useState(true);
+  const [costOverride, setCostOverride] = useState<number | null>(null);
+  const offroadCost = costOverride ?? planningPolicy?.offroad_cost ?? 50;
   useEffect(() => {
     if (!hardware) return;
     const controller = new AbortController();
@@ -85,6 +101,20 @@ export function ABWorkspace() {
   const [placeId, setPlaceId] = useState<string | undefined>();
   const [selection, setSelection] = useState<"a" | "b">("a");
   const [blocked, setBlocked] = useState<string[]>([]);
+  const preferenceField = useMemo(
+    () =>
+      weighted
+        ? roadPreferenceField(blocked, planningPolicy?.resolution)
+        : null,
+    [weighted, blocked, planningPolicy?.resolution],
+  );
+  const preferenceImage = useMemo(
+    () =>
+      preferenceField
+        ? roadPreferenceImage(preferenceField, offroadCost)
+        : undefined,
+    [preferenceField, offroadCost],
+  );
   const [blockMode, setBlockMode] = useState(false),
     [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ABResult | null>(null);
@@ -145,6 +175,27 @@ export function ABWorkspace() {
       return;
     }
     if (blockMode) return;
+    if (weighted) {
+      const p = toMap(point),
+        bounds = planningPolicy?.bounds;
+      if (
+        !bounds ||
+        p.x < bounds[0] ||
+        p.y < bounds[1] ||
+        p.x >= bounds[2] ||
+        p.y >= bounds[3]
+      ) {
+        setMessage("请选择规划地图范围内的终点");
+        return;
+      }
+      invalidate();
+      setPlaceId(undefined);
+      setB(point);
+      setMessage(
+        "目标已选择：主路优先，路外为较高代价候选区，实际障碍仍需避让",
+      );
+      return;
+    }
     const projected = snap(point),
       open = projected && snap(projected.point, blocked);
     if (
@@ -183,13 +234,23 @@ export function ABWorkspace() {
   };
   const compute = async () => {
     if (!b || (!a && !hardware)) return;
-    if (!a) return;
+    if (!a) {
+      setMessage("尚未收到当前位置，暂时不能规划");
+      return;
+    }
     const token = ++generation.current;
     setBusy(true);
     try {
-      const backendPreview = online || (hardware && !!pose);
+      const backendPreview = hardware || online || weighted;
       const next = backendPreview
-        ? referenceResult(await previewRoute(b, blocked, placeId))
+        ? referenceResult(
+            await previewRoute(
+              b,
+              blocked,
+              placeId,
+              weighted ? offroadCost : undefined,
+            ),
+          )
         : planAB(a, b, blocked);
       if (generation.current !== token) return;
       next.blocked = [...blocked];
@@ -242,6 +303,27 @@ export function ABWorkspace() {
   const displayedGoal = b ?? (currentTask ? mapToSvg(currentTask.goal) : null);
   const overlay = (markerScale: number) => (
     <g pointerEvents="none">
+      {weighted &&
+        showPreference &&
+        planningPolicy?.bounds &&
+        (() => {
+          const bounds = planningPolicy.bounds;
+          const top = mapToSvg({ x: bounds[0], y: bounds[3] });
+          const width = (bounds[2] - bounds[0]) / scale,
+            height = (bounds[3] - bounds[1]) / scale;
+          return (
+            <g data-testid="road-preference-overlay">
+              <image
+                x={top.x}
+                y={top.y}
+                width={width}
+                height={height}
+                href={preferenceImage}
+                preserveAspectRatio="none"
+              />
+            </g>
+          );
+        })()}
       {places.map((place) => {
         const p = mapToSvg(place);
         return (
@@ -454,10 +536,31 @@ export function ABWorkspace() {
             <small>{coordinate(b)}</small>
           </span>
         </button>
+        {weighted && (
+          <label className="road-cost-control">
+            <span>
+              路外代价 <output>{offroadCost}</output>
+            </span>
+            <input
+              aria-label="路外代价"
+              type="range"
+              min="1"
+              max="99"
+              step="1"
+              value={offroadCost}
+              onChange={(event) => {
+                invalidate();
+                setCostOverride(Number(event.target.value));
+                setMessage("权重已改变，请重新规划；执行中的任务不受影响");
+              }}
+            />
+            <small>中心 0 → 路边／路外 {offroadCost}；调大更偏向路中</small>
+          </label>
+        )}
         <button
           className="primary ab-plan"
           data-testid="plan-ab"
-          disabled={!b || (!hardware && !a) || busy}
+          disabled={!b || !a || busy}
           onClick={() => void compute()}
         >
           <Route size={16} />
@@ -501,6 +604,8 @@ export function ABWorkspace() {
           busy={navigation.busy}
           canExecute={
             !!b &&
+            !!result?.plan &&
+            !result.error &&
             (!placeId ||
               !hardware ||
               places.some((p) => p.id === placeId && p.enabled))
@@ -514,13 +619,23 @@ export function ABWorkspace() {
                   ? "定位、传感器或导航尚未就绪"
                   : !b
                     ? "尚未选择终点：点“设置终点”后在地图上选择"
-                    : placeId &&
-                        hardware &&
-                        !places.some((p) => p.id === placeId && p.enabled)
-                      ? "所选地图目的地尚未现场确认"
-                      : "导航繁忙"
+                    : !result?.plan || result.error
+                      ? "请先按当前权重规划路线"
+                      : placeId &&
+                          hardware &&
+                          !places.some((p) => p.id === placeId && p.enabled)
+                        ? "所选地图目的地尚未现场确认"
+                        : "导航繁忙"
           }
-          onExecute={() => b && void navigation.execute(b, blocked, placeId)}
+          onExecute={() =>
+            b &&
+            void navigation.execute(
+              b,
+              blocked,
+              placeId,
+              weighted ? offroadCost : undefined,
+            )
+          }
           onCancel={() => void navigation.cancel()}
         />
         <button
@@ -544,8 +659,8 @@ export function ABWorkspace() {
             invalidate();
             setB(null);
             setPlaceId(undefined);
-            if (!online) setA(null);
-            setSelection(online ? "b" : "a");
+            if (!online && !hardware) setA(null);
+            setSelection(online || hardware ? "b" : "a");
             setBlocked([]);
           }}
         >
@@ -557,6 +672,15 @@ export function ABWorkspace() {
         <div className="map-toolbar">
           {!showCostmap && (
             <>
+              {weighted && (
+                <button
+                  className="layer-toggle"
+                  aria-pressed={showPreference}
+                  onClick={() => setShowPreference((v) => !v)}
+                >
+                  {showPreference ? "隐藏道路权重" : "显示道路权重"}
+                </button>
+              )}
               <button
                 className="layer-toggle"
                 aria-pressed={layers.network}
@@ -608,6 +732,12 @@ export function ABWorkspace() {
             hideHome
             hideTasks
           />
+        )}
+        {weighted && !showCostmap && (
+          <p className="road-preference-legend">
+            中心 0 → 路边／路外 {offroadCost} · 淡紫渐变（可规划，未确认安全）·
+            雷达代价图不变
+          </p>
         )}
         <p data-testid="ab-message">{message}</p>
         {preview?.status === "completed" && (

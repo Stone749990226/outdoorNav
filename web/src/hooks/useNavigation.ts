@@ -30,11 +30,16 @@ export function useNavigation() {
     };
   }, []);
   const execute = useCallback(
-    async (goal: Point, blocked: string[], placeId?: string) => {
+    async (
+      goal: Point,
+      blocked: string[],
+      placeId?: string,
+      offroadCost?: number,
+    ) => {
       setBusy(true);
       setError("");
       try {
-        await executeGoal(goal, blocked, placeId);
+        await executeGoal(goal, blocked, placeId, offroadCost);
         setStatus(await getStatus());
       } catch (e) {
         setError(e instanceof Error ? e.message : "导航提交失败");

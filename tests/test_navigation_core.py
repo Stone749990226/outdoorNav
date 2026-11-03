@@ -175,7 +175,7 @@ class RouteGuidanceTests(unittest.TestCase):
         after = guide.window(self.point(1.5))
         self.assertNotEqual(before, after)
         self.assertEqual(guide.index, 2)  # 0.5 m BEFORE reaching the first station.
-        self.assertGreater(guide.points[after[-1]]["x"] - 1.5, 6)
+        self.assertLessEqual(guide.points[after[-1]]["x"] - 1.5, 6)
         zigzag = self.guide([(i / 10, i % 2) for i in range(100)])
         self.assertLessEqual(len(zigzag.window(self.point(0))), 12)
 
@@ -488,7 +488,7 @@ class SensorOnlyNavigationTests(unittest.TestCase):
                 node.tasks.cancel(task_id)
 
         node.pause = pause
-        with patch.object(nav, "plan_route", return_value=dict(reference_path=points)):
+        with patch.object(node.outdoor, "plan_from", return_value=dict(reference_path=points)):
             asyncio.run(node.execute(handle))
         self.assertEqual(len(followers), 2)  # Sim clock unchanged; no 1 s / 6 s wait.
         self.assertEqual(node.tasks.snapshot(task_id)["path_revision"], 2)
@@ -516,7 +516,7 @@ class SensorOnlyNavigationTests(unittest.TestCase):
         node.follow_client.send_goal_async.return_value = Mock(done=lambda: True, result=lambda: follower)
         node.release_controller = AsyncMock(return_value=True)
         node.confirm_stop = AsyncMock(return_value=True)
-        self.stack.enter_context(patch.object(nav, "plan_route", return_value=dict(reference_path=points)))
+        self.stack.enter_context(patch.object(node.outdoor, "plan_from", return_value=dict(reference_path=points)))
         return task_id, handle
 
     def test_nearby_final_on_U_cannot_complete_before_traversing_reference(self):

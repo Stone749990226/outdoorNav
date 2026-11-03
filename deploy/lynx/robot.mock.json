@@ -94,5 +94,9 @@
   "auto_activate": true,
   "require_chassis_ready": false,
   "respect_place_heading": false,
-  "gnss_stable_s": 2.0
+  "gnss_stable_s": 2.0,
+  "road_preference_enabled": true,
+  "road_offroad_cost": 50,
+  "road_preference_resolution_m": 0.5,
+  "road_keepout_polygons": []
 }
