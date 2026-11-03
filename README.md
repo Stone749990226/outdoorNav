@@ -79,4 +79,4 @@ tests/isolated_task_flow.py --rtk-imu # 合成 RTK+IMU 的完整网页→任务�
 
 ## 文档
 
-[架构](docs/ARCHITECTURE.md) · [实测数据](docs/DATA.md) · [验证记录](docs/VALIDATION.md) · [实施计划](docs/plan.md) · [山猫部署](deploy/lynx/README.md) · [相机网页](docs/camera-view.md) · [网页代价地图](docs/costmap-web.md) · [出门前检查](docs/outdoor-readiness-audit-2026-10-29.md)
+[架构](docs/ARCHITECTURE.md) · [实测数据](docs/DATA.md) · [验证记录](docs/VALIDATION.md) · [实施计划](docs/plan.md) · [山猫部署](deploy/lynx/README.md) · [相机网页](docs/camera-view.md) · [网页代价地图](docs/costmap-web.md) · [出门前检查](docs/outdoor-readiness-audit-2026-10-29.md) · [前雷达实测](docs/lidar-field-notes.md)

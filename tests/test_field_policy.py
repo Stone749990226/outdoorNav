@@ -82,6 +82,8 @@ def test_chassis_not_ready_is_visible_before_accepting_navigation():
     assert 'not_rl_control' in chassis_blockers(4, 0x3002, .1, 1, .1)
     assert 'navigation_usage_mode_unverified' in chassis_blockers(17, 0x3002, .1, None, .1)
     assert 'motion_feedback_stale' in chassis_blockers(17, 0x3002, 2, 1, .1)
+    # Usage mode is polled once per second; a three-second-old value is unusable.
+    assert 'navigation_usage_mode_unverified' in chassis_blockers(17, 0x3002, .1, 1, 4.)
 
 
 def test_field_profile_keeps_obstacle_layer_and_exposes_wait_and_stop_limits():
@@ -89,6 +91,9 @@ def test_field_profile_keeps_obstacle_layer_and_exposes_wait_and_stop_limits():
     assert cfg['obstacle_layer_enabled'] is True
     assert cfg['footprint_radius_m'] == .6
     assert cfg['scan_range_min_m'] == .5
+    # Measured ground plane is z=-0.42, so this band starts ~0.12 m above ground
+    # and deliberately ignores obstacles taller than ~0.72 m.
+    assert cfg['cloud_min_height_m'] == -.3 and cfg['cloud_max_height_m'] == .3
     assert cfg['inflation_padding_m'] == .1
     assert cfg['allow_float_during_fixed_task'] is True
     assert cfg['stopped_linear_mps'] == .03
