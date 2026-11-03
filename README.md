@@ -1,14 +1,49 @@
 # OutdoorNav 室外导航
 
-从实测 UBX 轨迹还原校园路网，在 Gazebo Fortress 三维场景中模拟小车、GNSS、IMU、雷达和深度相机。网页选择目标后，后端沿路网选路，Nav2 使用传感器代价地图，沿道路参考路线分段规划、控制和绕障。
+在山猫四足机器人上适配室外导航：RTK + WIT IMU 定位，沿实测校园路网分段规划，雷达避障，网页选点导航。
 
-山猫实机使用同一套路网执行器，部署和现场验收见 [山猫部署说明](deploy/lynx/README.md)；实施状态见 [计划](docs/plan.md)。默认关闭实机运动。
+同一套路网执行器有两种运行方式：
 
-## 环境
+- **山猫实机**（当前重点）：真车、真传感器、真运动，见 [山猫部署说明](deploy/lynx/README.md)
+- **Gazebo 仿真**（开发调试）：小车、GNSS、IMU、雷达、深度相机，一键起整套演示
 
-Ubuntu 22.04 原生 Linux 或 WSL2，ROS 2 Humble、Gazebo Fortress、Node.js ≥22.12。WSL2 需要可用的 WSLg 显示环境。
+> 注意：室外导航**不使用山猫自带的 `/ODOM` 里程计**（经常失效），定位靠 RTK 位置 + WIT IMU 航向/角速度。
 
-先按 ROS/Gazebo 官方说明安装 Humble 与 Fortress，再安装所需 ROS 包：
+## 山猫实机快速开始
+
+连接机器人（内网穿透）：
+
+```bash
+ssh -p 6003 nvidia@svr.gddg08.top
+```
+
+在机器人上的仓库目录里：
+
+```bash
+# 真实导航（网页端口 8765，真实速度指令经桥转发到底盘）
+bash deploy/lynx/fieldtest/start_production.sh
+
+# 室内模拟（虚拟底盘 + 合成 RTK，网页端口 8766，不产生真实运动）
+bash start_mock.sh
+curl -s -X POST -H 'Content-Type: application/json' -d '{"active":true}' http://127.0.0.1:8766/api/activation
+
+# 只读诊断（拒绝导航任务，速度只发到诊断话题）
+bash deploy/lynx/start.sh --diagnostic
+```
+
+打开网页 `http://<机器人地址>:8765/`，点击道路附近的目标点（最多偏离道路 2 米）即可规划并执行导航。网页可直接切换只读代价图（局部/全局图 + 车位姿 + 执行路径），无需 RViz，见 [网页代价地图](docs/costmap-web.md)；远程看车状态用 [相机网页](docs/camera-view.md)。
+
+**让车动起来的前提**（缺一车就不会走）：
+
+1. 底盘站起且处于 RL 控制（`/MOTION_STATE` 先 `state 1` 再 `state 17`）
+2. 导航步态（`/GAIT` 0x3002）与使用模式 `usage_mode=1`
+3. 网页上所有健康项变绿（RTK 固定/浮点解、IMU 航向就绪、雷达数据新鲜、服务已激活）
+
+现场档配置为 `deploy/lynx/robot.fieldtest.json`（默认 `motion_enabled` 放行）；通用配置 `deploy/lynx/robot.json` 保持严格默认（未确认项全关，车不会动）。出门前的限制审查见 [室外准备检查](docs/outdoor-readiness-audit-2026-10-29.md)，10 月 28 日实机复盘见 [调试总结](docs/fieldtest-postmortem-2026-10-28.md) 与 [修复记录](docs/fieldtest-fixes-2026-10-28.md)。
+
+## Gazebo 仿真
+
+Ubuntu 22.04 或 WSL2，ROS 2 Humble、Gazebo Fortress、Node.js ≥22.12。先按官方说明安装 Humble 与 Fortress，再安装所需 ROS 包：
 
 ```bash
 sudo apt install python3-colcon-common-extensions mesa-utils \
@@ -17,57 +52,31 @@ sudo apt install python3-colcon-common-extensions mesa-utils \
   ros-humble-sensor-msgs-py ros-humble-rviz2
 ```
 
-轨迹与场景处理优先使用仓库 uv venv，否则使用 conda `torch` 环境。新建环境示例：
+在仓库根目录：
 
 ```bash
-uv venv --python python3.10
-uv pip install --python .venv/bin/python -e .
+./nav up          # 一键构建并启动仿真 + RViz + 前端
+./nav down        # 结束整套演示
 ```
 
-ROS 节点始终使用 Humble 对应的系统 Python。启动程序不会安装依赖或修改驱动。
+打开 **http://localhost:5174/**：
 
-## 启动与使用
+1. 选择 **A→B 规划**；在线时 A 自动使用小车当前位置
+2. 在道路上设置终点，点击 **规划 A→B**
+3. 点击 **执行导航**，在 Gazebo 中观察真实物理运动
 
-在仓库根目录执行，两种平台命令相同：
+绿色及圆点为路网参考路线与途经点，蓝色虚线为 Nav2 当前滚动执行路径。可以取消任务或替换目标；任务失败时保留界面和失败原因，未恢复就绪前不接受新任务。行驶中可在右侧 **场景障碍物** 面板添加静止或移动障碍物，小车通过传感器感知并重新规划。
+
+常用命令：`./nav status` 看健康与任务，`./nav logs navigation` 看日志，`./nav survey` 重新处理实测轨迹，`./nav scene build` 生成场景包，`./nav capture` 采集诊断数据，`./nav validate` 跑真实运动验收，`./nav record` 录 ROS bag。运行日志与真值/估计轨迹统一写入 `artifacts/runs/<run_id>/`。
+
+## 测试
 
 ```bash
-./nav doctor
-./nav up
+.venv/bin/python -m pytest tests/     # 离线单元/回归测试（ROS 相关用例自动跳过）
+tests/lynx_ros_smoke.py               # 隔离 ROS 域联调（需 source ROS 与 .ros-install）
+tests/isolated_task_flow.py --rtk-imu # 合成 RTK+IMU 的完整网页→任务→Nav2 流程
 ```
 
-等待 `OutdoorNav is ready`，打开 **http://localhost:5174/**：
+## 文档
 
-1. 选择 **A→B 规划**；在线时 A 自动使用小车当前位置。
-2. 在道路上设置终点，点击 **规划 A→B**。
-3. 点击 **执行导航**，在 Gazebo 中观察真实物理运动。
-
-绿色及圆点为路网参考路线与途经点，蓝色虚线为 Nav2 当前滚动执行路径。路网用于选路与终点选择，不作为代价地图的静态先验；未观测区域保持未知，由雷达和深度相机逐步观测。执行时保留道路弯折，中间引导点不逐个停车。默认 RViz 同时显示 RGB 与 Depth。可以取消任务或替换目标。**离线动画演示只播放网页动画**。
-
-到达后只停车，Gazebo、RViz 和网页保持开启，可继续设置下一个目标。任务失败或导航暂时不可用时也保留界面和失败原因；未恢复就绪之前不接受新的导航任务。
-
-只有主动按 `Ctrl+C` 或在另一个终端运行 `./nav down` 才结束正常运行的整套演示。
-
-行驶中可以在右侧 **场景障碍物** 面板选择静止或移动障碍物：点击“选障碍物位置”后在地图上选点；移动障碍物再选移动终点、设置速度；点击“添加到 Gazebo”。橙色方块是真实场景障碍，移动障碍物在两点之间往返，可随时删除。小车通过传感器感知障碍并重新规划；传感器地图无法找到可行路径时明确失败。
-
-## 常用命令
-
-| 命令 | 用途 |
-| --- | --- |
-| `./nav up` | 默认同时起 RViz（看传感器、地图和路径）|
-| `./nav up --no-rviz` | 不起 RViz，只起仿真与前端 |
-| `./nav up --render software` | 使用软件渲染；默认 auto 会检测并尝试回退 |
-| `./nav build` | 显式构建；up 也会按源码与依赖指纹检查重建 |
-| `./nav status` / `./nav logs navigation` | 查看健康、任务和日志 |
-| `./nav survey --loop 1.ubx --branch 2.ubx` | 重新处理实测轨迹 |
-| `./nav scene build` | 根据处理结果生成统一场景包 |
-| `./nav obstacle add --x 1 --y -5 --width 0.6 --depth 0.6` | 添加临时静态障碍 |
-| `./nav obstacle remove` | 删除该障碍 |
-| `./nav obstacle add --kind moving --x 3 --y -10 --end-x 4 --end-y -10 --speed 0.2` | 添加两点往返的移动障碍 |
-| `./nav capture --seconds 60` | 同步采集栅格、点云与 TF 供诊断 |
-| `./nav diagnose sticky-history --help` | 查看离线诊断参数 |
-| `./nav validate --scenario short` | 执行真实运动验收并生成独立真值报告 |
-| `./nav record` | 记录 ROS bag；Ctrl+C 结束记录 |
-
-运行日志、实际参数、进程身份与真值/估计轨迹统一写入 `artifacts/runs/<run_id>/`。
-
-[架构](docs/ARCHITECTURE.md) · [实测数据](docs/DATA.md) · [验证记录](docs/VALIDATION.md) · [相机网页](docs/camera-view.md) · [网页代价地图](docs/costmap-web.md) · [出门前检查](docs/outdoor-readiness-audit-2026-10-29.md)
+[架构](docs/ARCHITECTURE.md) · [实测数据](docs/DATA.md) · [验证记录](docs/VALIDATION.md) · [实施计划](docs/plan.md) · [山猫部署](deploy/lynx/README.md) · [相机网页](docs/camera-view.md) · [网页代价地图](docs/costmap-web.md) · [出门前检查](docs/outdoor-readiness-audit-2026-10-29.md)
