@@ -16,6 +16,11 @@
 ```bash
 ssh -p 6003 nvidia@svr.gddg08.top
 ```
+山猫WiFi切换命令：
+```bash
+sudo nmcli connection up ZTE_B3000D
+nmcli connection show --active
+```
 
 在机器人上的仓库目录里：
 
