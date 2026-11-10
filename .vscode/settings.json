@@ -1,0 +1,63 @@
+{
+  // JS / TS：减少项目级检查和自动导入搜索。
+  "js/ts.tsserver.experimental.enableProjectDiagnostics": false,
+  "js/ts.preferences.includePackageJsonAutoImports": "off",
+  "js/ts.preferences.autoImportFileExcludePatterns": [
+    "**/dist/**",
+    "**/lib/**",
+    "**/build/**"
+  ],
+  // 保留 TS / TSX 的自动导入建议，仅关闭 JS / JSX 的建议。
+  "[javascript][javascriptreact]": {
+    "js/ts.suggest.autoImports": false
+  },
+  "js/ts.tsserver.log": "off",
+  "search.quickOpen.includeSymbols": false,
+
+  // Python：关闭自动导入索引，只检查打开的文件。
+  // 跳转仍依赖解释器、依赖安装情况和模块搜索路径。
+  "python.analysis.indexing": false,
+  "python.analysis.diagnosticMode": "openFilesOnly",
+  "python.analysis.exclude": [
+    "**/.venv",
+    "**/venv",
+    "**/node_modules",
+    "**/data",
+    "**/__pycache__"
+  ],
+  "python.analysis.autoSearchPaths": true,
+
+  // 当前远程环境使用已安装的微软 C/C++ 插件。
+  "C_Cpp.intelliSenseEngine": "default",
+
+  // 减少无关目录的文件监听和搜索。
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/dist/**": true,
+    "**/build/**": true,
+    "**/.venv/**": true,
+    "**/venv/**": true,
+    "**/__pycache__/**": true,
+    "**/coverage/**": true,
+    "**/*.log": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/build": true,
+    "**/.venv": true,
+    "**/venv": true,
+    "**/__pycache__": true,
+    "**/coverage": true
+  },
+
+  // 编辑器显示与标签数量。
+  "editor.codeLens": false,
+  "editor.minimap.enabled": false,
+  "workbench.editor.limit.enabled": true,
+  "workbench.editor.limit.perEditorGroup": true,
+  "workbench.editor.limit.value": 8,
+  "editor.foldingStrategy": "indentation"
+}

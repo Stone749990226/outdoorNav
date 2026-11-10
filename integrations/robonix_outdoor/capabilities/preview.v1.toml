@@ -1,9 +1,0 @@
-[contract]
-id = "robonix/service/outdoor/preview"
-version = "1"
-kind = "service"
-idl = "outdoor/srv/Preview.srv"
-description = "Outdoor navigation preview"
-
-[mode]
-type = "rpc"

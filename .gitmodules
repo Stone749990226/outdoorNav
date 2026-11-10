@@ -1,0 +1,33 @@
+[submodule "primitive-deep-robotics-lynx-chassis-rbnx"]
+	path = primitive-deep-robotics-lynx-chassis-rbnx
+	url = https://github.com/syswonder/primitive-deep-robotics-lynx-chassis-rbnx.git
+[submodule "primitive-deep_robotics-lynx_s10-camera-rbnx"]
+	path = primitive-deep_robotics-lynx_s10-camera-rbnx
+	url = https://github.com/syswonder/primitive-deep_robotics-lynx_s10-camera-rbnx.git
+[submodule "primitive-g70-gnss-rbnx"]
+	path = primitive-g70-gnss-rbnx
+	url = https://github.com/syswonder/primitive-g70-gnss-rbnx.git
+[submodule "primitive-wit-imu-rbnx"]
+	path = primitive-wit-imu-rbnx
+	url = https://github.com/syswonder/primitive-wit-imu-rbnx.git
+[submodule "robonix"]
+	path = robonix
+	url = https://github.com/syswonder/robonix.git
+[submodule "robonix-book"]
+	path = robonix-book
+	url = https://github.com/syswonder/robonix-book.git
+[submodule "robot-deep_robotics-lynx_s10"]
+	path = robot-deep_robotics-lynx_s10
+	url = https://github.com/syswonder/robot-deep_robotics-lynx_s10.git
+[submodule "service-localization-outdoor-rbnx"]
+	path = service-localization-outdoor-rbnx
+	url = https://github.com/syswonder/service-localization-outdoor-rbnx.git
+[submodule "service-map-outdoor-rbnx"]
+	path = service-map-outdoor-rbnx
+	url = https://github.com/syswonder/service-map-outdoor-rbnx.git
+[submodule "service-map-rbnx"]
+	path = service-map-rbnx
+	url = https://github.com/syswonder/service-map-rbnx.git
+[submodule "service-navigation-outdoor-rbnx"]
+	path = service-navigation-outdoor-rbnx
+	url = https://github.com/syswonder/service-navigation-outdoor-rbnx.git

@@ -1,0 +1,31 @@
+{
+  "source_root": "/mnt/c/Users/xjy/projects/outdoorNav-main",
+  "algorithm": "SHA-256",
+  "files": {
+    "outdoornav/routing.py": "138d914f9b84c40e7a38f6e8cbe80a17601ecd5db9927a84200e8237ccfd294c",
+    "outdoornav/road_preference.py": "3d0deeb1219977e00ffe7a12a1aaa84d060ba321d1804a19ebe1a39240cb07a0",
+    "outdoornav/places.py": "86d874a77438c148dd7c8e2450a8fbc9324016a3fa7af31d264618cf7d8b950f",
+    "scenes/north_campus/generated/bundle.json": "4f14d3a9ab10855ca035b8d3f6d4fb9ed02bd624cdfdcf21628f3db6d0a4a4d4",
+    "scenes/north_campus/generated/site_plan.png": "c46d40fbd866dfabbf9a2a7cd429086294ecf922e259a67403617b9960217a6d",
+    "scenes/north_campus/generated/campus.pgm": "61275b3e4b084a83eab4a7f474c16c6c79472650c1364e64d935f1e2dd3b6b40",
+    "scenes/north_campus/generated/campus.yaml": "5fd0e553a23b7ef012acb355e87222f142131ad4de117e241b92beeed3b48573",
+    "scenes/north_campus/generated/masks.npz": "4a8aa27909bd281f5bb72d407852342da4fc228f1a5da7962cdfa47b16a13f1f",
+    "scenes/north_campus/generated/models/campus_scene/meshes/plaza.dae": "718502c22b3eb0f11c5d4070262803e1cccfe22b48608ad657eafe254e8e847c",
+    "scenes/north_campus/generated/models/campus_scene/meshes/roads.dae": "6f898d575f14267f0d7bd57aed27f745d4ce1852e8998a78e57e63b59299d7a2",
+    "scenes/north_campus/generated/models/campus_scene/model.config": "33595ffebe47a10a161919a4a85f111818999795d3320be87a7559625aed221e",
+    "scenes/north_campus/generated/models/campus_scene/model.sdf": "18563c98f4497c3928b945277a83574c41b59d9e59fe98b083bfa36b2ef22be4",
+    "scenes/north_campus/generated/world.sdf": "b04e8aef0238f5b44612935be94320a153bb698b69e96e18937457d8963f3dac",
+    "scenes/north_campus/places.json": "aa905102cce48e211abfd664c6554f45288bb0f27a149c13624cde0934b0598e"
+  },
+  "extracted_functions": {
+    "distance": "dedb1bc3e9dd10c5e98b8dcc1269b127ef0054ce8f1c7d60da7f40cfb2fd5126",
+    "projection": "52a92e5121a1873a4f83f55b9776a8d9f63d3a038eea130ebcc6cae8202df1dd",
+    "OutdoorService.__init__": "d262fc8c58199b2391a1dad8f11183958768c5b2e27af4c8950dfef09fcf0552",
+    "OutdoorService.planning_policy": "f68fe3ea932cde9a628b567af2fd71be1407f7fe10a38dfb5f54c655a82c0804",
+    "OutdoorService.planning_cost": "684a5370b664793a9209c13aeaa91087ac3d806527ede7d5bc7271e29789c280",
+    "OutdoorService.plan_from": "b793d98fe71b7f85d944d7b467a05839fae90849debf2e0b7355d504469f7629",
+    "OutdoorService.preview": "911776c44b74b666216dcacc2fa6e2d6760ea9f4b32652e4cc4965d95d3b95fb",
+    "OutdoorService.target": "f793ab904625f190fa5140e16c4a64094db20b6bff5d019bc90b1648d2279acd",
+    "OutdoorService.validated": "5c675eaca9db078fb910c7e45be72770fdd8912c5251c82ff958813fec9edabe"
+  }
+}

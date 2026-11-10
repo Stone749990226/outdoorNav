@@ -1,4 +1,0 @@
-string place_id
-string[] blocked_road_ids
----
-string route_json

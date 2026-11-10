@@ -29,3 +29,6 @@
 
 # Field demo runtime output
 /run/
+
+# Local runtime output
+/logs/
