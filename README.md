@@ -20,6 +20,7 @@
 | `robot-deep_robotics-lynx_s10/outdoor` | 室外部署清单和现场配置 |
 | `robot-deep_robotics-lynx_s10/primitives/primitive-lynx_chassis` | 底盘消息转换、通信隔离和反馈保护 |
 | `robot-deep_robotics-lynx_s10/primitives/primitive-lynx_lidar` | 雷达驱动和点云接口 |
+| `robot-deep_robotics-lynx_s10/primitives/primitive-lynx_camera` | 山猫相机原语唯一维护位置，包含实现、测试和说明 |
 | `primitive-g70-gnss-rbnx`、`primitive-wit-imu-rbnx` | 外接传感器原语 |
 | `service-localization-outdoor-rbnx` | RTK＋IMU 融合定位 |
 | `service-map-outdoor-rbnx` | 道路录制、补采、地图保存和路线规划 |

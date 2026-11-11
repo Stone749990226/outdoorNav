@@ -1,9 +1,6 @@
 [submodule "primitive-deep-robotics-lynx-chassis-rbnx"]
 	path = primitive-deep-robotics-lynx-chassis-rbnx
 	url = https://github.com/syswonder/primitive-deep-robotics-lynx-chassis-rbnx.git
-[submodule "primitive-deep_robotics-lynx_s10-camera-rbnx"]
-	path = primitive-deep_robotics-lynx_s10-camera-rbnx
-	url = https://github.com/Stone749990226/primitive-deep_robotics-lynx_s10-camera-rbnx.git
 [submodule "primitive-g70-gnss-rbnx"]
 	path = primitive-g70-gnss-rbnx
 	url = https://github.com/syswonder/primitive-g70-gnss-rbnx.git
