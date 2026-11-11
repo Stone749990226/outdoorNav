@@ -1,0 +1,37 @@
+{
+  "browser": "PASS",
+  "monitor": "实际新画面约 0.9 帧/秒 · 接收约 7.8 KB/秒 · 相机源尺寸 1024×576",
+  "request_intervals_ms": [
+    999,
+    999
+  ],
+  "measurements": [
+    {
+      "query": "",
+      "size": [
+        1024,
+        576
+      ],
+      "format": "PNG",
+      "response_bytes": 455136
+    },
+    {
+      "query": "?width=640&quality=75&fps=2",
+      "size": [
+        640,
+        360
+      ],
+      "format": "JPEG",
+      "response_bytes": 29060
+    },
+    {
+      "query": "?width=320&quality=40&fps=1",
+      "size": [
+        320,
+        180
+      ],
+      "format": "JPEG",
+      "response_bytes": 6196
+    }
+  ]
+}
