@@ -28,7 +28,8 @@ export function usePatrol() {
   const [speed, setSpeed] = useState(5);
   const [mode, setMode] = useState<Mode>("inspect");
   const [layers, setLayers] = useState<Layers>({
-    basemap: true,
+    basemap: false,
+    satellite: true,
     semantic: true,
     access: false,
     network: false,

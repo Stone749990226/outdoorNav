@@ -882,6 +882,16 @@ svg text {
   color: #4f6a58;
   pointer-events: none;
 }
+.map-attribution {
+  position: absolute;
+  bottom: 2px;
+  left: 8px;
+  max-width: calc(100% - 16px);
+  padding: 1px 4px;
+  background: #142022d9;
+  color: #adbbb6;
+  font-size: 9px;
+}
 .map-status {
   height: 35px;
   display: flex;

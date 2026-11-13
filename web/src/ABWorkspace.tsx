@@ -36,7 +36,8 @@ import type { Point, Simulation } from "./types";
 import { extractWaypoints } from "./waypoints";
 
 const defaultLayers: Layers = {
-  basemap: true,
+  basemap: false,
+  satellite: true,
   semantic: true,
   access: false,
   network: false,
@@ -692,12 +693,21 @@ export function ABWorkspace() {
               </button>
               <button
                 className="layer-toggle"
+                aria-pressed={layers.satellite}
+                onClick={() =>
+                  setLayers((v) => ({ ...v, satellite: !v.satellite }))
+                }
+              >
+                {layers.satellite ? "隐藏卫星底图" : "显示卫星底图"}
+              </button>
+              <button
+                className="layer-toggle"
                 aria-pressed={layers.basemap}
                 onClick={() =>
                   setLayers((v) => ({ ...v, basemap: !v.basemap }))
                 }
               >
-                {layers.basemap ? "隐藏园区底图" : "显示园区底图"}
+                {layers.basemap ? "隐藏示意底图" : "显示示意底图"}
               </button>
             </>
           )}

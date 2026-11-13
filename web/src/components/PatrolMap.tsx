@@ -121,6 +121,7 @@ export function PatrolMap({ model }: { model: PatrolModel }) {
           </div>
           {(
             [
+              ["satellite", "卫星底图"],
               ["basemap", "园区示意底图"],
               ["semantic", "巡检点名称"],
               ["access", "路线可达性"],

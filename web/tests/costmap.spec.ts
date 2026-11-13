@@ -73,10 +73,29 @@ test("read-only costmap view switches frames, shows stale data and returns to go
   await expect(
     page.getByRole("button", { name: "隐藏道路网络", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "隐藏园区底图", exact: true }).click();
+  await expect(page.getByTestId("campus-satellite")).toBeVisible();
+  await expect(page.getByTestId("campus-basemap")).toHaveCount(0);
+  const satellite = page.getByTestId("campus-satellite").locator("image");
   await expect(
-    page.getByRole("button", { name: "显示园区底图", exact: true }),
+    satellite.evaluate(async (image) => {
+      const bitmap = new Image();
+      bitmap.src = image.getAttribute("href")!;
+      await bitmap.decode();
+      return bitmap.naturalWidth > 0 && bitmap.naturalHeight > 0;
+    }),
+  ).resolves.toBe(true);
+  await page.getByRole("button", { name: "隐藏卫星底图", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "显示卫星底图", exact: true }),
   ).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByTestId("campus-satellite")).toHaveCount(0);
+  await page.getByRole("button", { name: "显示示意底图", exact: true }).click();
+  await expect(page.getByTestId("campus-basemap")).toBeVisible();
+  await expect(page.getByTestId("campus-satellite")).toHaveCount(0);
+  await page.getByRole("button", { name: "隐藏示意底图", exact: true }).click();
+  await page.getByRole("button", { name: "显示卫星底图", exact: true }).click();
+  await expect(page.getByTestId("campus-satellite")).toBeVisible();
+  await expect(page.getByTestId("campus-basemap")).toHaveCount(0);
   await page.getByRole("button", { name: "路线详情", exact: true }).click();
   await expect(
     page.getByRole("button", { name: /路线 JSON|途经点 CSV|地图 JSON/ }),
@@ -106,6 +125,7 @@ test("read-only costmap view switches frames, shows stale data and returns to go
   await expect(page.getByTestId("costmap-layer-global")).toBeVisible();
   await page.getByTestId("toggle-costmap").click();
   await expect(page.getByTestId("costmap-panel")).toHaveCount(0);
+  await expect(page.getByTestId("campus-satellite")).toBeVisible();
   await expect(page.getByTestId("select-b")).toBeVisible();
   expect(requests).toContain("/api/costmaps/local");
   expect(requests).toContain("/api/costmaps/global");

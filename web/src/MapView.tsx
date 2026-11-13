@@ -1,17 +1,41 @@
 import { Compass, Maximize, ZoomIn, ZoomOut } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import basemapUrl from "./assets/north-building-basemap.svg";
-import { svgOrigin, campus, pathD, roads, scale, survey, toMap } from "./map";
+import satelliteExtent from "./assets/north-campus-satellite.json";
+import satelliteUrl from "./assets/north-campus-satellite.webp";
+import {
+  svgOrigin,
+  campus,
+  geoToMap,
+  mapToSvg,
+  pathD,
+  roads,
+  scale,
+  survey,
+  toMap,
+} from "./map";
 import { reachableRoads } from "./planner";
 import type { Point, Simulation } from "./types";
 
 export type Layers = {
   basemap: boolean;
+  satellite: boolean;
   semantic: boolean;
   access: boolean;
   network: boolean;
   route: boolean;
   reference: boolean;
+};
+const satelliteTopLeft = mapToSvg(
+  geoToMap(satelliteExtent.north, satelliteExtent.west),
+);
+const satelliteBottomRight = mapToSvg(
+  geoToMap(satelliteExtent.south, satelliteExtent.east),
+);
+const satelliteBounds = {
+  ...satelliteTopLeft,
+  width: satelliteBottomRight.x - satelliteTopLeft.x,
+  height: satelliteBottomRight.y - satelliteTopLeft.y,
 };
 export type Reference = {
   url: string;
@@ -190,6 +214,18 @@ export function MapView({
             fill="url(#metric-grid)"
           />
           {/* Artwork is authored in the current survey's SVG frame, below every interactive layer. */}
+          {layers.satellite && (
+            <g data-testid="campus-satellite" pointerEvents="none">
+              <image
+                href={satelliteUrl}
+                {...satelliteBounds}
+                preserveAspectRatio="none"
+                aria-label="园区卫星底图"
+              />
+              {/* Keep route labels legible over the imagery. */}
+              <rect {...satelliteBounds} fill="#0d1518" opacity="0.52" />
+            </g>
+          )}
           {layers.basemap && (
             <image
               data-testid="campus-basemap"
@@ -467,6 +503,16 @@ export function MapView({
         <div style={{ width: (10 / scale) * pixelsPerUnit * view.zoom }} />
         <span>10 m</span>
       </div>
+      {layers.satellite && (
+        <a
+          className="map-attribution"
+          href="https://goto.arcgisonline.com/maps/World_Imagery"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Esri, Vantor, Earthstar Geographics, GIS User Community
+        </a>
+      )}
     </div>
   );
 }
