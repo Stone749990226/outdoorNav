@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><title>山猫导航模拟</title>
+<style>
+body{margin:0;font:15px system-ui;background:#f4f6f8;color:#18212b}header{padding:12px 18px;background:#ffd75e}
+button,select{padding:7px;margin:5px;border:1px solid #9aa6b2;border-radius:5px;cursor:pointer}
+#status{margin:6px 18px;white-space:pre-wrap}iframe{width:100%;height:78vh;border:0}a{color:#163b72}
+</style>
+<header><strong>模拟模式 · 不连接真实底盘</strong>　<span id="pose">连接中…</span>
+<div>
+RTK <select id="gnss"><option value="fixed">FIXED</option><option value="float">FLOAT</option><option value="off">断流</option></select>
+<button id="imu">拔出 IMU</button><button id="chassis">中断底盘反馈</button>
+<button id="gait">不响应步态切换</button><button id="noise">静止速度噪声</button>
+<button id="restore">恢复所有输入</button>　<a id="scene" target="_blank">单独打开 Scene</a>
+</div></header><div id="status" role="status"></div><iframe id="view" title="真实 Scene 导航界面"></iframe>
+<script>
+let state;
+async function faults(body){
+ try{const r=await fetch('/faults',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ if(!r.ok)throw Error(await r.text());await update();}catch(e){document.querySelector('#status').textContent=e.message;}
+}
+async function update(){
+ try{
+  const r=await fetch('/state');if(!r.ok)throw Error('模拟器连接失败');state=await r.json();const w=state.world,f=state.faults;
+  document.querySelector('#pose').textContent=`位置 (${w.x.toFixed(2)}, ${w.y.toFixed(2)}) 米　速度 ${w.linear_mps.toFixed(2)} 米/秒　方向 ${w.yaw_deg.toFixed(1)}°`;
+  document.querySelector('#gnss').value=f.gnss;
+  document.querySelector('#imu').textContent=f.imu_connected?'拔出 IMU':'接回 IMU';
+  document.querySelector('#chassis').textContent=f.chassis_feedback?'中断底盘反馈':'恢复底盘反馈';
+  document.querySelector('#gait').textContent=f.gait_ack?'不响应步态切换':'恢复步态响应';
+  document.querySelector('#status').textContent='无障碍输入仅用于流程测试，不验证避障或真实楼梯通过能力。';
+  const scene=`http://${location.hostname}:${state.scene_port}/outdoor`;
+  if(!document.querySelector('#view').src)document.querySelector('#view').src=scene;
+  document.querySelector('#scene').href=scene;
+ }catch(e){document.querySelector('#status').textContent='连接中断：'+e.message;}
+}
+document.querySelector('#gnss').onchange=e=>faults({gnss:e.target.value});
+document.querySelector('#imu').onclick=()=>faults({imu_connected:!state.faults.imu_connected});
+document.querySelector('#chassis').onclick=()=>faults({chassis_feedback:!state.faults.chassis_feedback});
+document.querySelector('#gait').onclick=()=>faults({gait_ack:!state.faults.gait_ack});
+document.querySelector('#noise').onclick=()=>faults({velocity_noise_mps:state.faults.velocity_noise_mps?0:0.04});
+document.querySelector('#restore').onclick=()=>faults({gnss:'fixed',imu_connected:true,chassis_feedback:true,gait_ack:true,heading_bias_deg:0,velocity_noise_mps:0});
+update();setInterval(update,500);
+</script></html>

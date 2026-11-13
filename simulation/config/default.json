@@ -1,0 +1,14 @@
+{
+  "domain": 176,
+  "atlas_port": 51651,
+  "scene_port": 50118,
+  "localization_port": 19880,
+  "navigation_port": 19885,
+  "control_port": 19890,
+  "origin": {"latitude": 30.2240679, "longitude": 120.2598139},
+  "start": {"x": 0.0, "y": 0.0, "yaw_deg": 0.0},
+  "max_speed_mps": 0.4,
+  "grid_size_m": 20.0,
+  "arrival_m": 0.5,
+  "seed": 7
+}
