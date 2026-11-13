@@ -11,6 +11,7 @@
 - [系统分工](docs/ARCHITECTURE.md)：原语、服务、部署配置分别做什么。
 - [部署和使用](docs/DEPLOYMENT.md)：准备依赖、启动、停止、建图和现场参数。
 - [验证和现场复验](docs/VALIDATION.md)：离线检查与实机待办。
+- [室内模拟联调](simulation/README.md)：mock RTK、IMU 和底盘，运行真实 Scene、定位和导航服务。
 - [相机查看工具](robot-deep_robotics-lynx_s10/tools/camera_view/README.md)：通过 SSH 隧道实时查看山猫四路画面。
 
 ## 源码位置
@@ -26,6 +27,7 @@
 | `service-map-outdoor-rbnx` | 道路录制、补采、地图保存和路线规划 |
 | `service-navigation-outdoor-rbnx` | 路线执行、避障、停车和步态切换流程 |
 | `robonix/system/scene` | 操作网页，调用地图与导航服务 |
+| `simulation` | 隔离的模拟原语、故障开关及完整流程检查 |
 
 旧校园地图资料归档在 `artifacts/archive/north_campus/`，不参与当前运行。
 

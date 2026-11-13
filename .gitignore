@@ -1,4 +1,15 @@
 # Independently cloned upstream source trees and local reference material.
+# Former submodules: each keeps its own git repo; this repo no longer tracks them.
+/primitive-g70-gnss-rbnx/
+/primitive-wit-imu-rbnx/
+/robonix/
+/robonix-book/
+/robot-deep_robotics-lynx_s10/
+/service-localization-outdoor-rbnx/
+/service-map-outdoor-rbnx/
+/service-map-rbnx/
+/service-navigation-outdoor-rbnx/
+/primitive-deep-robotics-lynx-chassis-rbnx/
 /nav2/
 /ros2_src/
 /ros2_humble/
@@ -24,6 +35,9 @@
 /artifacts/runs/
 /artifacts/history/
 /artifacts/lynx/
+
+# Per-task session output dumped under artifacts/ (e.g. simulation-20261111/).
+/artifacts/*-20[0-9][0-9][0-9][0-9][0-9][0-9]/
 /integrations/robonix_outdoor/rbnx-build/
 **/*.tsbuildinfo
 

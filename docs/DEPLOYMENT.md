@@ -1,7 +1,24 @@
 # 部署和使用
 
 以下在山猫上执行。源码位置为 `robot-deep_robotics-lynx_s10/outdoor`。
-本地工作区的同名服务目录用于开发；实机运行采用 `sources.json` 锁定的依赖。
+本地工作区的同名服务目录用于开发；首次准备使用 `sources.json` 的基线，
+现场部署统一同步本地当前源码。
+
+## 同步到山猫
+
+本地当前源码（含未提交修改）统一通过以下命令同步。先在山猫用 `rbnx shutdown`
+停止正在运行的清单，再在电脑执行：
+
+```bash
+bash tools/sync_robot.sh --dry-run
+bash tools/sync_robot.sh
+```
+
+唯一正式目录为 `/home/nvidia/robot-deep_robotics-lynx_s10/outdoor`。
+同步覆盖部署、服务、框架与三个山猫原语，保留地图、Scene 标注、日志、虚拟环境
+和私密配置；不会启动服务。之后在山猫加载环境、构建，再使用下面的启动命令。
+`sources.json` 用于首次获取基线；同步本地开发修改后，不再运行 `prepare.py` 回退版本。
+旧 `./outdoor` 和 `robot_outdoor/cli.py` 已移除。
 
 ## 首次准备
 
