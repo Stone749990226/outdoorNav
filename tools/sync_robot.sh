@@ -3,6 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REMOTE="nvidia@svr.gddg08.top"
+WORKSPACE="/home/nvidia/outdoorNav-workspace"
 DEPLOY="/home/nvidia/robot-deep_robotics-lynx_s10/outdoor"
 FLAGS=(-az --delete --exclude=.git --exclude=.venv --exclude=__pycache__
   --exclude='*.pyc' --exclude='*.egg-info' --exclude=.pytest_cache
@@ -23,6 +24,9 @@ if [[ "${1:-}" != "--dry-run" ]]; then
       exit 1
     }
 fi
+# Keep root-level tools/docs and every independent repository, including uncommitted files.
+rsync "${FLAGS[@]}" --exclude=secrets.json --exclude=gnss.base.yaml \
+  "$ROOT/" "$REMOTE:$WORKSPACE/"
 rsync "${FLAGS[@]}" --exclude=packages --exclude=framework \
   --exclude=secrets.json --exclude=gnss.base.yaml \
   "$ROOT/robot-deep_robotics-lynx_s10/outdoor/" "$REMOTE:$DEPLOY/"

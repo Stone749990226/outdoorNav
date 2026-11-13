@@ -127,7 +127,6 @@ export function NavigationPanel({
           {!status.heading.nine_axis_verified && " · 九轴模式未确认"}
           {!status.heading.mounting_confirmed && " · 安装外参待确认"}
           {!status.heading.reference_confirmed && " · 真北参考待确认"}
-          {!status.heading.quality_confirmed && " · 航向精度待验证"}
           {status.heading.heading_fresh &&
             status.heading.body_yaw_enu_rad != null &&
             ` · 车体 ENU 角 ${((status.heading.body_yaw_enu_rad * 180) / Math.PI).toFixed(1)}°`}

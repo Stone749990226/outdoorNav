@@ -16,7 +16,8 @@ bash tools/sync_robot.sh
 
 唯一正式目录为 `/home/nvidia/robot-deep_robotics-lynx_s10/outdoor`。
 同步覆盖部署、服务、框架与三个山猫原语，保留地图、Scene 标注、日志、虚拟环境
-和私密配置；不会启动服务。之后在山猫加载环境、构建，再使用下面的启动命令。
+和私密配置；另将整个工作区源码镜像到 `/home/nvidia/outdoorNav-workspace/`，包含未提交文件及根目录工具、文档。
+不会启动服务。简明步骤见根目录[同步到山猫.md](../同步到山猫.md)。之后在山猫加载环境、构建，再使用下面的启动命令。
 `sources.json` 用于首次获取基线；同步本地开发修改后，不再运行 `prepare.py` 回退版本。
 旧 `./outdoor` 和 `robot_outdoor/cli.py` 已移除。
 
@@ -41,7 +42,10 @@ uv pip install --python .venv/bin/python -e framework/robonix/pylib/robonix-api 
 填写 `config/gnss.base.yaml` 的 NTRIP 地址、用户和挂载点。密码放在
 `config/secrets.json`，格式为 `{"NTRIP_PASSWORD":"实际密码"}`，权限设为 600。
 这两个文件不提交。设备串口、IMU 安装方向、磁偏角、天线偏移均须现场核对。
-两个清单目前保留 `quality_confirmed=false`、`yaw_std_deg=null`，航向未确认时不会就绪。
+航向参数已固化（2026-11-13）：`yaw_std_deg=20`、`max_yaw_2sigma_deg=45`，
+取自 2026-11-11 现场授权（磁航向实测误差约 18°，20° 为假设不确定度）。
+不再有逐次航向精度确认门槛：RTK 固定解且连续静止 5 秒后定位自动初始化。
+安装旋转、磁偏角等现场核对项确认一次后随清单持久保存，无需重复配置。
 
 ## 构建、启动和停止
 

@@ -58,7 +58,6 @@ export type NavigationStatus = {
     true_heading_deg?: number | null;
     body_yaw_enu_rad?: number | null;
     mounting_confirmed?: boolean;
-    quality_confirmed?: boolean;
     age_s?: number | null;
   } | null;
   localization_mode?: "external_odom" | "rtk_imu";
