@@ -9,7 +9,8 @@ FLAGS=(-az --delete --exclude=.git --exclude=.venv --exclude=__pycache__
   --exclude='*.pyc' --exclude='*.egg-info' --exclude=.pytest_cache
   --exclude=rbnx-build --exclude=rbnx-boot --exclude=target --exclude=node_modules
   --exclude=build --exclude=dist --exclude=run --exclude=logs --exclude=data
-  --exclude=backups --exclude=.robonix)
+  --exclude=backups --exclude=.robonix --exclude=artifacts/validation --exclude=bin
+  --exclude=_weights --exclude=weights)
 if [[ "${1:-}" == "--dry-run" ]]; then
   FLAGS+=(--dry-run --itemize-changes)
 elif [[ $# != 0 ]]; then
@@ -25,12 +26,12 @@ if [[ "${1:-}" != "--dry-run" ]]; then
     }
 fi
 # Keep root-level tools/docs and every independent repository, including uncommitted files.
-rsync "${FLAGS[@]}" --exclude=secrets.json --exclude=gnss.base.yaml \
+rsync "${FLAGS[@]}" --exclude=secrets.json --exclude=gnss.base.yaml --exclude=ground.local.json \
   "$ROOT/" "$REMOTE:$WORKSPACE/"
 rsync "${FLAGS[@]}" --exclude=packages --exclude=framework \
-  --exclude=secrets.json --exclude=gnss.base.yaml \
+  --exclude=secrets.json --exclude=gnss.base.yaml --exclude=ground.local.json \
   "$ROOT/robot-deep_robotics-lynx_s10/outdoor/" "$REMOTE:$DEPLOY/"
-for package in primitive-g70-gnss-rbnx primitive-wit-imu-rbnx \
+for package in primitive-g70-gnss-rbnx primitive-wit-imu-rbnx primitive-orbbec-camera \
   service-localization-outdoor-rbnx service-map-outdoor-rbnx service-navigation-outdoor-rbnx; do
   rsync "${FLAGS[@]}" "$ROOT/$package/" "$REMOTE:$DEPLOY/packages/$package/"
 done

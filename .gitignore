@@ -2,6 +2,7 @@
 # Former submodules: each keeps its own git repo; this repo no longer tracks them.
 /primitive-g70-gnss-rbnx/
 /primitive-wit-imu-rbnx/
+/primitive-orbbec-camera/
 /robonix/
 /robonix-book/
 /robot-deep_robotics-lynx_s10/
@@ -46,3 +47,6 @@
 
 # Local runtime output
 /logs/
+
+# Local validation output (see tools/sync_robot.sh excludes)
+/artifacts/validation/
