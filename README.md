@@ -22,6 +22,7 @@
 | `robot-deep_robotics-lynx_s10/primitives/primitive-lynx_chassis` | 底盘消息转换、通信隔离和反馈保护 |
 | `robot-deep_robotics-lynx_s10/primitives/primitive-lynx_lidar` | 雷达驱动和点云接口 |
 | `robot-deep_robotics-lynx_s10/primitives/primitive-lynx_camera` | 山猫相机原语唯一维护位置，包含实现、测试和说明 |
+| `primitive-orbbec-camera` | Orbbec RGB/配准深度/内参原语；预览与导航启用独立 |
 | `primitive-g70-gnss-rbnx`、`primitive-wit-imu-rbnx` | 外接传感器原语 |
 | `service-localization-outdoor-rbnx` | RTK＋IMU 融合定位 |
 | `service-map-outdoor-rbnx` | 道路录制、补采、地图保存和路线规划 |
@@ -40,3 +41,10 @@ git clone --recurse-submodules git@github.com:Stone749990226/outdoorNav.git
 # 已有工作区更新后：
 git submodule update --init --recursive
 ```
+
+
+## 本轮室内验证
+
+导航 main 合并及执行架构见 [新分支对比](docs/NAVIGATION_MAIN_COMPARISON.md)，现场绕法保留/撤销见 [改动复评](docs/FIELD_CHANGES_20261120.md)。依赖提交由机器人部署 `outdoor/sources.json` 锁定，标定和密钥文件不随 Git 提供。
+
+具备 ROS/Nav2 与已构建依赖时，可运行 `SIM_DEPS_ROOT=/实际部署目录 bash simulation/start.sh --smoke`。所有运动都在隔离模拟域，不会启动真实底盘。到达、取消、IMU 断流恢复通过后应用才退出；非 smoke 模式持续运行供再次下发目标。

@@ -62,6 +62,12 @@ class Hardware(Node):
         self.gait = self.create_publisher(UInt32, "/mock/actual_gait", 10)
         self.cloud = self.create_publisher(PointCloud2, TOPICS["lidar/lidar3d"], 10)
         self.create_subscription(Twist, TOPICS["chassis/twist_in"], self.command, 10)
+        self.commands = {}
+        for name, topic in (("controller", "/navigation/controller_command"),
+                            ("safe", "/outdoor/safe_command"),
+                            ("final", TOPICS["chassis/twist_in"])):
+            self.create_subscription(Twist, topic,
+                lambda m, key=name: self.commands.update({key: (m.linear.x, m.angular.z, time.monotonic())}), 10)
         self.create_subscription(UInt32, TOPICS["chassis/gait_in"], self.gait_request, 10)
         self.create_timer(0.01, self.tick)
         self.create_timer(0.1, self.publish_gnss)
@@ -174,7 +180,7 @@ class Hardware(Node):
         # This provides liveness only, without claiming obstacle simulation.
         fields = [PointField(name=a, offset=i * 4, datatype=PointField.FLOAT32, count=1)
                   for i, a in enumerate(("x", "y", "z"))]
-        points = [(7.9 * math.cos(i * math.tau / 360), 7.9 * math.sin(i * math.tau / 360), 0.0)
+        points = [(7.9 * math.cos(i * math.tau / 360), 7.9 * math.sin(i * math.tau / 360), 0.2)
                   for i in range(360)]
         self.cloud.publish(point_cloud2.create_cloud(
             Header(stamp=self.get_clock().now().to_msg(), frame_id="base_link"), fields, points))
@@ -183,6 +189,8 @@ class Hardware(Node):
         with self.lock:
             return {"simulated": True, "world": self.world.snapshot(), "faults": dict(self.faults),
                     "imu_samples": self.imu_count, "scene_port": self.config["scene_port"],
+                    "command_diagnostics": {k: {"linear_mps": v[0], "angular_rps": v[1],
+                        "age_s": time.monotonic()-v[2]} for k, v in self.commands.items()},
                     "mode": "SIMULATION — NO ROBOT CONNECTION"}
 
     def update_faults(self, body):

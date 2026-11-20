@@ -4,8 +4,10 @@ SIM_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SIM_DEPS_ROOT="${SIM_DEPS_ROOT:-$SIM_ROOT}"
 if [[ -d "$SIM_DEPS_ROOT/packages" ]]; then
   SIM_MAP_ROOT="$SIM_DEPS_ROOT/packages/service-map-outdoor-rbnx"
+  SIM_NAV_ROOT="${SIM_NAVIGATION_ROOT:-$SIM_DEPS_ROOT/packages/service-navigation-outdoor-rbnx}"
 else
   SIM_MAP_ROOT="$SIM_DEPS_ROOT/service-map-outdoor-rbnx"
+  SIM_NAV_ROOT="${SIM_NAVIGATION_ROOT:-$SIM_DEPS_ROOT/service-navigation-outdoor-rbnx}"
 fi
 if [[ -x "$SIM_ROOT/simulation/.venv/bin/python" ]]; then
   SIM_DEFAULT_PYTHON="$SIM_ROOT/simulation/.venv/bin/python"
@@ -20,6 +22,9 @@ fi
 set +u
 source "${ROS_SETUP:-/opt/ros/humble/setup.bash}"
 source "$SIM_MAP_ROOT/rbnx-build/codegen/ros2_idl/install/setup.bash"
+if [[ -f "$SIM_NAV_ROOT/rbnx-build/camera_ws/install/local_setup.bash" ]]; then
+  source "$SIM_NAV_ROOT/rbnx-build/camera_ws/install/local_setup.bash"
+fi
 set -u
 export SIM_DEPS_ROOT
 export PATH="$(dirname "$SIM_PYTHON"):$HOME/.cargo/bin:$HOME/.local/bin:$PATH"

@@ -31,7 +31,7 @@ class World:
         self.v = self.w = self.acceleration = 0.0
         self.target = (0.0, 0.0)
         self.command_at = -math.inf
-        self.state, self.gait, self.usage_mode = 17, 0x3002, 1
+        self.state, self.gait, self.usage_mode = 17, self.start.get("gait_code", 0x3002), 1
         self.distance = 0.0
         self.command_count = 0
         self.gait_history = [self.gait]
@@ -46,7 +46,8 @@ class World:
 
     def tick(self, dt, now):
         target = self.target
-        if now - self.command_at > 0.35 or self.state != 17 or self.usage_mode != 1:
+        if (now - self.command_at > 0.35 or self.state != 17 or self.usage_mode != 1
+                or self.gait not in (0x3002, 0x3003)):
             target = (0.0, 0.0)
         old_v = self.v
         self.v += max(-0.6 * dt, min(0.6 * dt, target[0] - self.v))

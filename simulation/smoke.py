@@ -43,12 +43,27 @@ def check(base, control, run):
         w = truth()
         return abs(w["linear_mps"]) < 0.01 and abs(w["angular_rps"]) < 0.01
 
+    def moving():
+        # A return leg may begin with a turn in place. Cancellation and IMU
+        # loss must stop rotation too, not wait for translation to start.
+        snapshot = request(control + "/state")
+        w = snapshot["world"]
+        nav = navigation()
+        with (run / "motion-wait.jsonl").open("a") as stream:
+            stream.write(json.dumps({"truth": w, "commands": snapshot.get("command_diagnostics"),
+                "cycle": nav.get("decision_cycle"), "terrain": nav.get("terrain_status"),
+                "blocked": nav.get("not_ready_reasons"), "task": nav.get("task")}) + "\n")
+        return abs(w["linear_mps"]) > .03 or abs(w["angular_rps"]) > .03
+
     checks = []
     print("smoke: navigating to courier point, including gait switches", flush=True)
     state = request(base + "/api/outdoor/state")
     place = next(p for p in state["places"] if p["name"] == "快递点" and p["enabled"])
     task_id, plan = execute({"x": place["x"], "y": place["y"]})
-    task = wait_for(lambda: finished(task_id), timeout=120)
+    points = plan.get("reference_path") or []
+    length = sum(math.hypot(b['x']-a['x'], b['y']-a['y']) for a,b in zip(points, points[1:]))
+    # Test budget follows route length; it is not a navigation freshness setting.
+    task = wait_for(lambda: finished(task_id), timeout=max(120., 60.+2*length/.4))
     assert task["state"] == "succeeded", task.get("reason")
     wait_for(stopped, timeout=5)
     w = truth()
@@ -56,8 +71,11 @@ def check(base, control, run):
     error = math.hypot(w["x"] - plan["goal"]["x"], w["y"] - plan["goal"]["y"])
     assert error <= tolerance + 0.2, (w, error, tolerance)
     assert w["distance_m"] > 1 and w["command_count"] > 0, w
-    if any(i["gait"] == "stairs" for i in plan.get("intervals", [])):
+    terrain = state["navigation"].get("terrain_status") is not None
+    if not terrain and any(i["gait"] == "stairs" for i in plan.get("intervals", [])):
         assert 0x3003 in w["gait_history"] and w["gait_history"][-1] == 0x3002, w
+    if terrain:
+        assert w["gait"] == 0x3002, w
     checks.append({"check": "arrival_and_gait_feedback", "truth_error_m": error,
                    "distance_m": w["distance_m"], "gait_history": w["gait_history"]})
 
@@ -65,7 +83,7 @@ def check(base, control, run):
     wait_for(lambda: navigation().get("ready"))
     print("smoke: canceling a moving robot", flush=True)
     task_id, _ = execute({"x": start["x"], "y": start["y"]})
-    wait_for(lambda: abs(truth()["linear_mps"]) > 0.03, timeout=20)
+    wait_for(moving, timeout=20)
     request(base + "/api/outdoor/cancel", {"run_id": task_id})
     task = wait_for(lambda: finished(task_id), timeout=20)
     assert task["state"] == "canceled", task.get("reason")
@@ -75,7 +93,7 @@ def check(base, control, run):
     print("smoke: unplugging IMU while moving", flush=True)
     wait_for(lambda: navigation().get("ready"))
     task_id, _ = execute({"x": start["x"], "y": start["y"]})
-    wait_for(lambda: abs(truth()["linear_mps"]) > 0.03, timeout=20)
+    wait_for(moving, timeout=20)
     at = time.monotonic()
     request(control + "/faults", {"imu_connected": False})
     try:

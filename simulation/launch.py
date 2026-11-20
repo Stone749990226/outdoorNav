@@ -121,35 +121,42 @@ def configurations(paths, cfg, run):
                 "magnetic_declination_rad": 0.0, "yaw_std_deg": 1.0,
                 "course_heading": False, "timeout_s": 0.5},
         "fusion": {"stationary_s": 5.0},
+        "publish_imu_tf": True,
         "output_topics": {"odom": "/mock/localization/odom", "pose": "/mock/localization/pose",
                           "status": "/mock/localization/status", "tf": "/mock/tf", "tf_static": "/mock/tf_static"},
         "run_dir": str(run / "localization"), "http_port": cfg["localization_port"],
         "worker_python": sys.executable,
     }
-    # Navigation requires an explicit, machine-local ground height in base_link;
-    # the mock world's clearing ring sits at z = 0, so the field value keeps the
-    # body-relative band identical to the robot's.
+    # Synthetic world calibration, not a default for physical robots.
     ground = run / "ground.local.json"
     ground.write_text(json.dumps({"ground_z_m": -0.42}))
+    import yaml
+    from outdoor_nav.nav2_parameters import parameters
+    nav2 = yaml.safe_load((paths["navigation"] / "config/nav2_params.example.yml").read_text())
+    grid = parameters(nav2, "global_costmap")
+    grid.update(origin_x=-cfg["grid_size_m"]/2, origin_y=-cfg["grid_size_m"]/2,
+                width=int(cfg["grid_size_m"]), height=int(cfg["grid_size_m"]), rolling_window=True)
+    parameters(nav2, "controller_server")["FollowPath"].update(
+        max_vel_x=cfg["max_speed_mps"], max_speed_xy=cfg["max_speed_mps"])
+    parameters(nav2, "velocity_smoother")["max_velocity"][0] = cfg["max_speed_mps"]
+    params = run / "nav2.yaml"
+    params.write_text(yaml.safe_dump(nav2))
     navigation = {
-        "params_file": str(paths["navigation"] / "config/nav2_params.example.yml"),
+        "params_file": str(params),
         "ground_height_file": str(ground),
-        "provider_ids": {"cloud": "mock_hardware", "localization": "localization_outdoor", "chassis": "mock_hardware"},
+        "provider_ids": {"cloud": "mock_hardware", "localization": "localization_outdoor", "chassis": "mock_hardware", "imu": "mock_hardware"},
+        "terrain": cfg.get("terrain", {"enabled": False}),
+        "decision_cycle": cfg.get("decision_cycle", {"enabled": False}),
         "topic_remap": {"tf": "/mock/tf", "tf_static": "/mock/tf_static", "chassis": "/mock/chassis_status"},
         "velocity_output_topic": "/mock/cmd_vel", "gait_output_topic": "/mock/gait_request",
-        "gait_switching_enabled": True, "global_grid": {"origin": [-cfg["grid_size_m"] / 2] * 2,
-            "width": cfg["grid_size_m"], "height": cfg["grid_size_m"], "resolution": 0.1, "rolling": True},
+        "gait_switching_enabled": True,
         "http_port": cfg["navigation_port"], "run_dir": str(run / "navigation"),
         "worker_python": sys.executable, "action_wait_s": 30.0,
         "policy": {"motion_enabled": True, "calibrated": True, "antenna_offset_confirmed": True,
                    "footprint_confirmed": True, "cloud_frame_confirmed": True, "feedback_confirmed": True,
-                   "require_chassis_ready": True, "max_speed_mps": cfg["max_speed_mps"],
+                   "require_chassis_ready": True,
                    "fixed_arrival_m": cfg["arrival_m"], "float_arrival_m": cfg["arrival_m"],
-                   "stopped_linear_mps": 0.10, "stop_hold_s": 1.0,
-                   # The simulated GNSS pipeline can lag the pose stamp by ~2 s
-                   # once the mock slows down; keep the demo check from aborting
-                   # on that while the underlying lag stays visible in /status.
-                   "sensor_timeout_s": 3.0},
+                   "stopped_linear_mps": 0.10, "stop_hold_s": 1.0},
     }
     return {
         "mock_hardware": cfg,
@@ -278,7 +285,12 @@ def serve(args, cfg, run):
         if not any(p["name"] == "快递点" for p in state.get("places", [])):
             request(base + "/api/regions", {"kind": "poi", "name": "快递点", "points": [[goal["x"], goal["y"]]],
                     "map_id": value["map_id"], "version": value["version"]})
-        wait_for(lambda: request(base + "/api/outdoor/state")["navigation"].get("ready"), timeout=35)
+        def navigation_ready():
+            status = request(base + "/api/outdoor/state")["navigation"]
+            if not status.get("ready"):
+                raise RuntimeError("Navigation startup blocked: " + str(status.get("not_ready_reasons")))
+            return True
+        wait_for(navigation_ready, timeout=35)
         print(f"SIMULATION READY — no robot connection\nControl: http://127.0.0.1:{cfg['control_port']}/"
               f"\nScene: {base}/outdoor\nLogs: {run}", flush=True)
         (run / "ready.json").write_text(json.dumps({"simulated": True, "scene": base,

@@ -32,11 +32,14 @@ def state(base):
 
 
 def find_place(current, name):
-    for place in current.get("places") or []:
-        if place.get("name") == name:
-            if not place.get("enabled"):
-                raise SystemExit(f"Place {name!r} is marked stale; confirm it in Scene first")
-            return place
+    matches = [p for p in current.get("places") or [] if p.get("name") == name]
+    if len(matches) > 1:
+        raise SystemExit(f"Multiple places named {name!r}; rename them in Scene first")
+    if matches:
+        place = matches[0]
+        if not place.get("enabled"):
+            raise SystemExit(f"Place {name!r} is marked stale; confirm it in Scene first")
+        return place
     names = ", ".join(sorted(p.get("name", "?") for p in current.get("places") or [])) or "none"
     raise SystemExit(f"No place named {name!r}; Scene has: {names}")
 
@@ -94,7 +97,10 @@ def main(argv=None):
     last = None
     while time.monotonic() < deadline:
         task = (state(arguments.base).get("navigation") or {}).get("task") or {}
-        line = (task.get("state"), round(task.get("distance_remaining_m") or -1.0, 2))
+        if task.get("task_id") != task_id:
+            raise SystemExit("Task was superseded; this monitor will not report another task as its result")
+        remaining = task.get("distance_remaining_m")
+        line = (task.get("state"), round(-1.0 if remaining is None else remaining, 2))
         if line != last:
             print(f"{line[0]}\tremaining {line[1]:.2f} m", flush=True)
             last = line
