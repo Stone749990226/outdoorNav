@@ -118,7 +118,7 @@ def configurations(paths, cfg, run):
         "velocity_accuracy_confirmed": False, "estimator_mode": "eskf", "require_map_reference": True,
         "imu": {"base_from_imu_rotation": [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]],
                 "mounting_confirmed": True, "reference_confirmed": True,
-                "magnetic_declination_rad": 0.0, "quality_confirmed": True, "yaw_std_deg": 1.0,
+                "magnetic_declination_rad": 0.0, "yaw_std_deg": 1.0,
                 "course_heading": False, "timeout_s": 0.5},
         "fusion": {"stationary_s": 5.0},
         "output_topics": {"odom": "/mock/localization/odom", "pose": "/mock/localization/pose",
@@ -126,8 +126,14 @@ def configurations(paths, cfg, run):
         "run_dir": str(run / "localization"), "http_port": cfg["localization_port"],
         "worker_python": sys.executable,
     }
+    # Navigation requires an explicit, machine-local ground height in base_link;
+    # the mock world's clearing ring sits at z = 0, so the field value keeps the
+    # body-relative band identical to the robot's.
+    ground = run / "ground.local.json"
+    ground.write_text(json.dumps({"ground_z_m": -0.42}))
     navigation = {
         "params_file": str(paths["navigation"] / "config/nav2_params.example.yml"),
+        "ground_height_file": str(ground),
         "provider_ids": {"cloud": "mock_hardware", "localization": "localization_outdoor", "chassis": "mock_hardware"},
         "topic_remap": {"tf": "/mock/tf", "tf_static": "/mock/tf_static", "chassis": "/mock/chassis_status"},
         "velocity_output_topic": "/mock/cmd_vel", "gait_output_topic": "/mock/gait_request",
@@ -139,7 +145,11 @@ def configurations(paths, cfg, run):
                    "footprint_confirmed": True, "cloud_frame_confirmed": True, "feedback_confirmed": True,
                    "require_chassis_ready": True, "max_speed_mps": cfg["max_speed_mps"],
                    "fixed_arrival_m": cfg["arrival_m"], "float_arrival_m": cfg["arrival_m"],
-                   "stopped_linear_mps": 0.10, "stop_hold_s": 1.0},
+                   "stopped_linear_mps": 0.10, "stop_hold_s": 1.0,
+                   # The simulated GNSS pipeline can lag the pose stamp by ~2 s
+                   # once the mock slows down; keep the demo check from aborting
+                   # on that while the underlying lag stays visible in /status.
+                   "sensor_timeout_s": 3.0},
     }
     return {
         "mock_hardware": cfg,
