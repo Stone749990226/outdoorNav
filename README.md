@@ -33,10 +33,14 @@
 
 ## 获取工作区
 
-各独立仓库通过 submodule 固定版本，一次拉取全部源码：
+各独立仓库不随本仓库提交，用 `scripts/prepare.py` 一次拉取全部源码（只按分支取最新代码，不锁 commit）：
 
 ```bash
-git clone --recurse-submodules git@github.com:Stone749990226/outdoorNav.git
-# 已有工作区更新后：
-git submodule update --init --recursive
+git clone git@github.com:Stone749990226/outdoorNav.git
+cd outdoorNav
+python3 scripts/prepare.py --dry-run   # 可选：先预览
+python3 scripts/prepare.py             # 拉取/更新所有子仓库
 ```
+
+脚本每次运行都会把每个子仓库更新到其分支的最新代码，本地未提交修改会被覆盖。
+各仓库的分支在 `tools/sources.json` 里维护，留空表示跟随该仓库的远程默认分支。

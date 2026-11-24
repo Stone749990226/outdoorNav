@@ -1,8 +1,8 @@
 # 部署和使用
 
 以下在山猫上执行。源码位置为 `robot-deep_robotics-lynx_s10/outdoor`。
-本地工作区的同名服务目录用于开发；首次准备使用 `sources.json` 的基线，
-现场部署统一同步本地当前源码。
+本地工作区的同名服务目录用于开发；首次获取子仓库源码使用
+`scripts/prepare.py`（配置见 `tools/sources.json`），现场部署统一同步本地当前源码。
 
 ## 同步到山猫
 
@@ -18,8 +18,35 @@ bash tools/sync_robot.sh
 同步覆盖部署、服务、框架与三个山猫原语，保留地图、Scene 标注、日志、虚拟环境
 和私密配置；另将整个工作区源码镜像到 `/home/nvidia/outdoorNav-workspace/`，包含未提交文件及根目录工具、文档。
 不会启动服务。简明步骤见根目录[同步到山猫.md](../同步到山猫.md)。之后在山猫加载环境、构建，再使用下面的启动命令。
-`sources.json` 用于首次获取基线；同步本地开发修改后，不再运行 `prepare.py` 回退版本。
+`prepare.py` 按 `tools/sources.json` 把各子仓库更新到分支最新，会覆盖未提交修改；开发中的修改请在同步到山猫之后再运行。
 旧 `./outdoor` 和 `robot_outdoor/cli.py` 已移除。
+
+## 现场路线预览
+
+实现与模块分工见[室外语义地点路线预览](OUTDOOR_PLACE_PREVIEW.md)。
+
+此模式直接读取山猫已有的地图和地点标注，不启动传感器、底盘或导航执行。需要使用当前工作区源码构建的 Robonix；在山猫的 `framework/robonix` 目录运行 `RUSTUP_TOOLCHAIN=stable make install CARGO_FLAGS="--locked --debug"` 替换旧 CLI 和组件，然后回到正式部署目录。
+
+空地图库会自动导入并加载 `example-campus`。已有地图时不会自动导入或切图。
+
+停止其他部署后，在正式部署目录执行。预览与日常检查复用同一份 `robonix_manifest.yaml`：
+
+```bash
+export OUTDOOR_MODE=preview
+source scripts/environment.sh
+export ROBONIX_VLM_UPSTREAM=https://api.deepseek.com
+export ROBONIX_VLM_MODEL=deepseek-flash
+rbnx build -f robonix_manifest.yaml
+read -rs -p '模型 API Key: ' ROBONIX_VLM_API_KEY; printf '\n'
+export ROBONIX_VLM_API_KEY
+flock -n run/boot.lock rbnx boot -f robonix_manifest.yaml --no-update-check
+unset ROBONIX_VLM_API_KEY
+```
+
+Robonix 随清单启动 Pilot，不用另开 Pilot 脚本。换 OpenAI 兼容服务时，换 API 基础地址（不含 `/chat/completions`）、模型名和密钥即可。
+
+1. 在电脑运行 `ssh -p 6003 -N -L 50108:127.0.0.1:50108 nvidia@svr.gddg08.top`，打开 `http://127.0.0.1:50108/outdoor`，加载地图并标注地点。
+2. 在山猫另开终端运行 `rbnx chat --server 127.0.0.1:51551`，例如输入「帮我在室外导航到快递点」。Scene 从当前地图第一个已录道路点画出路线，只报告距离，不执行。
 
 ## 首次准备
 
@@ -29,14 +56,15 @@ Robonix CLI/codegen 和 uv。工作空间路径可用 `ROS_SETUP`、`DRDDS_SETUP
 `$HOME/drdds_build_ws/install/setup.bash`、`$HOME/rslidar_ws`。
 
 ```bash
-cd robot-deep_robotics-lynx_s10/outdoor
+cd /home/nvidia/outdoorNav-workspace   # 主仓库根目录，拉取各子仓库分支最新
 python3 scripts/prepare.py
+cd /home/nvidia/robot-deep_robotics-lynx_s10/outdoor
 uv venv --system-site-packages --python /usr/bin/python3 .venv
 uv pip install --python .venv/bin/python -e framework/robonix/pylib/robonix-api -r requirements.txt
 ```
 
-`prepare.py` 只准备锁定的服务和框架源码、部署内 Robonix 配置和 GNSS 配置模板。
-已有依赖含本地修改时拒绝更新，不启动硬件。Robonix CLI 与 codegen 应来自同一
+`prepare.py` 只按分支拉取/更新各子仓库源码（不锁 commit，见 `tools/sources.json`），
+不生成部署内 Robonix 配置和 GNSS 配置模板。Robonix CLI 与 codegen 应来自同一
 锁定框架版本；安装方法见该框架 README。
 
 填写 `config/gnss.base.yaml` 的 NTRIP 地址、用户和挂载点。密码放在

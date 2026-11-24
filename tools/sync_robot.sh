@@ -10,13 +10,16 @@ FLAGS=(-az --delete --exclude=.git --exclude=.venv --exclude=__pycache__
   --exclude=rbnx-build --exclude=rbnx-boot --exclude=target --exclude=node_modules
   --exclude=build --exclude=dist --exclude=run --exclude=logs --exclude=data
   --exclude=backups --exclude=.robonix)
+DRY_RUN=()
 if [[ "${1:-}" == "--dry-run" ]]; then
-  FLAGS+=(--dry-run --itemize-changes)
+  DRY_RUN=(--dry-run --itemize-changes)
+  FLAGS+=("${DRY_RUN[@]}")
 elif [[ $# != 0 ]]; then
   echo "Usage: bash tools/sync_robot.sh [--dry-run]" >&2
   exit 2
 fi
 export RSYNC_RSH='ssh -p 6003 -o BatchMode=yes -o ConnectTimeout=8'
+EXAMPLE_MAP=data/examples/example-campus/map.json
 if [[ "${1:-}" != "--dry-run" ]]; then
   ssh -p 6003 -o BatchMode=yes -o ConnectTimeout=8 "$REMOTE" \
     "flock -n '$DEPLOY/run/boot.lock' true" || {
@@ -34,6 +37,10 @@ for package in primitive-g70-gnss-rbnx primitive-wit-imu-rbnx \
   service-localization-outdoor-rbnx service-map-outdoor-rbnx service-navigation-outdoor-rbnx; do
   rsync "${FLAGS[@]}" "$ROOT/$package/" "$REMOTE:$DEPLOY/packages/$package/"
 done
+rsync -az --relative "${DRY_RUN[@]}" \
+  "$ROOT/./service-map-outdoor-rbnx/$EXAMPLE_MAP" "$REMOTE:$WORKSPACE/"
+rsync -az --relative "${DRY_RUN[@]}" \
+  "$ROOT/service-map-outdoor-rbnx/./$EXAMPLE_MAP" "$REMOTE:$DEPLOY/packages/service-map-outdoor-rbnx/"
 rsync "${FLAGS[@]}" "$ROOT/robonix/" "$REMOTE:$DEPLOY/framework/robonix/"
 for primitive in primitive-lynx_chassis primitive-lynx_lidar primitive-lynx_camera; do
   rsync "${FLAGS[@]}" "$ROOT/robot-deep_robotics-lynx_s10/primitives/$primitive/" \

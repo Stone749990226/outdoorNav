@@ -36,7 +36,7 @@ Ctrl-C 停止本次模拟；重新启动后虚拟山猫回到配置起点。
 ```bash
 # 复制旧地图到模拟目录；不修改原文件。起点需在该图道路附近。
 SIM_DEPS_ROOT=/home/nvidia/robot-deep_robotics-lynx_s10/outdoor bash simulation/start.sh \
-  --map /home/nvidia/robot-deep_robotics-lynx_s10/outdoor/data/outdoor_mapping/maps/outdoor-20261106-dff1ba32/map.json
+  --map /path/to/map.json
 
 # 执行到点、步态、取消、IMU 断流与恢复检查，完成后退出：
 SIM_DEPS_ROOT=/home/nvidia/robot-deep_robotics-lynx_s10/outdoor bash simulation/start.sh --smoke

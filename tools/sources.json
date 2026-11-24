@@ -1,0 +1,55 @@
+{
+  "_comment": "各子仓库的拉取配置，branch 为当前使用的分支。脚本只按分支取最新代码，不锁 commit；branch 留空表示跟随该仓库的远程默认分支。",
+  "repos": [
+    {
+      "name": "primitive-deep-robotics-lynx-chassis-rbnx",
+      "url": "https://github.com/syswonder/primitive-deep-robotics-lynx-chassis-rbnx.git",
+      "branch": "main"
+    },
+    {
+      "name": "primitive-g70-gnss-rbnx",
+      "url": "https://github.com/syswonder/primitive-g70-gnss-rbnx.git",
+      "branch": "main"
+    },
+    {
+      "name": "primitive-wit-imu-rbnx",
+      "url": "https://github.com/syswonder/primitive-wit-imu-rbnx.git",
+      "branch": "main"
+    },
+    {
+      "name": "robonix",
+      "url": "https://github.com/syswonder/robonix.git",
+      "branch": "feat/outdoor-pilot-preview"
+    },
+    {
+      "name": "robonix-book",
+      "url": "https://github.com/syswonder/robonix-book.git",
+      "branch": "fix/outdoor-field-ready"
+    },
+    {
+      "name": "robot-deep_robotics-lynx_s10",
+      "url": "https://github.com/syswonder/robot-deep_robotics-lynx_s10.git",
+      "branch": "feat/outdoor-pilot-preview"
+    },
+    {
+      "name": "service-localization-outdoor-rbnx",
+      "url": "https://github.com/syswonder/service-localization-outdoor-rbnx.git",
+      "branch": "main"
+    },
+    {
+      "name": "service-map-outdoor-rbnx",
+      "url": "https://github.com/syswonder/service-map-outdoor-rbnx.git",
+      "branch": "feat/outdoor-pilot-preview"
+    },
+    {
+      "name": "service-map-rbnx",
+      "url": "https://github.com/syswonder/service-map-rbnx.git",
+      "branch": "main"
+    },
+    {
+      "name": "service-navigation-outdoor-rbnx",
+      "url": "https://github.com/syswonder/service-navigation-outdoor-rbnx.git",
+      "branch": "main"
+    }
+  ]
+}
