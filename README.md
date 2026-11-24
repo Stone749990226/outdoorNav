@@ -14,6 +14,10 @@
 - [室内模拟联调](simulation/README.md)：mock RTK、IMU 和底盘，运行真实 Scene、定位和导航服务。
 - [相机查看工具](robot-deep_robotics-lynx_s10/tools/camera_view/README.md)：通过 SSH 隧道实时查看山猫四路画面。
 
+## 山猫仿真
+
+山猫 S10 已开展两类仿真。Isaac Sim 用简化底盘测试到点、绕障、堵塞停车和任务取消。MuJoCo 用 S10 关节模型测试坡道、楼梯和移动障碍。两套仿真都复用 Robonix 的地图、定位和导航服务，由虚拟底盘和传感器接入，记录轨迹、碰撞和到点误差。
+
 ## 源码位置
 
 | 目录 | 职责 |
