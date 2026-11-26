@@ -1,8 +1,9 @@
 # 部署和使用
 
-以下在山猫上执行。源码位置为 `robot-deep_robotics-lynx_s10/outdoor`。
+以下在山猫上执行。源码和运行目录都在 `/home/nvidia/outdoorNav-workspace/`，部署位置为
+`/home/nvidia/outdoorNav-workspace/robot-deep_robotics-lynx_s10/outdoor`。
 本地工作区的同名服务目录用于开发；首次获取子仓库源码使用
-`scripts/prepare.py`（配置见 `tools/sources.json`），现场部署统一同步本地当前源码。
+`scripts/prepare.py`（配置见部署目录的 `sources.json`，按分支跟随），现场部署统一同步本地当前源码。
 
 ## 同步到山猫
 
@@ -14,11 +15,12 @@ bash tools/sync_robot.sh --dry-run
 bash tools/sync_robot.sh
 ```
 
-唯一正式目录为 `/home/nvidia/robot-deep_robotics-lynx_s10/outdoor`。
+唯一正式目录为 `/home/nvidia/outdoorNav-workspace/robot-deep_robotics-lynx_s10/outdoor`，
+就是完整源码镜像 `/home/nvidia/outdoorNav-workspace/` 里的同一份代码，不再有两份拷贝。
 同步覆盖部署、服务、框架与三个山猫原语，保留地图、Scene 标注、日志、虚拟环境
-和私密配置；另将整个工作区源码镜像到 `/home/nvidia/outdoorNav-workspace/`，包含未提交文件及根目录工具、文档。
+和私密配置（`secrets.json`、`gnss.base.yaml`、`ground.local.json`、`preview-soul.md`、`*.bak-*`）。
 不会启动服务。简明步骤见根目录[同步到山猫.md](../同步到山猫.md)。之后在山猫加载环境、构建，再使用下面的启动命令。
-`prepare.py` 按 `tools/sources.json` 把各子仓库更新到分支最新，会覆盖未提交修改；开发中的修改请在同步到山猫之后再运行。
+`prepare.py` 按部署目录的 `sources.json` 把各子仓库更新到分支最新（不钉 commit），会覆盖未提交修改；开发中的修改请在同步到山猫之后再运行。
 旧 `./outdoor` 和 `robot_outdoor/cli.py` 已移除。
 
 ## 现场路线预览
@@ -58,12 +60,12 @@ Robonix CLI/codegen 和 uv。工作空间路径可用 `ROS_SETUP`、`DRDDS_SETUP
 ```bash
 cd /home/nvidia/outdoorNav-workspace   # 主仓库根目录，拉取各子仓库分支最新
 python3 scripts/prepare.py
-cd /home/nvidia/robot-deep_robotics-lynx_s10/outdoor
+cd /home/nvidia/outdoorNav-workspace/robot-deep_robotics-lynx_s10/outdoor
 uv venv --system-site-packages --python /usr/bin/python3 .venv
 uv pip install --python .venv/bin/python -e framework/robonix/pylib/robonix-api -r requirements.txt
 ```
 
-`prepare.py` 只按分支拉取/更新各子仓库源码（不锁 commit，见 `tools/sources.json`），
+`prepare.py` 只按分支拉取/更新各子仓库源码（不锁 commit，见部署目录的 `sources.json`），
 不生成部署内 Robonix 配置和 GNSS 配置模板。Robonix CLI 与 codegen 应来自同一
 锁定框架版本；安装方法见该框架 README。
 
@@ -130,7 +132,8 @@ ssh -p 6003 -N -L 50110:127.0.0.1:50108 nvidia@svr.gddg08.top
 ## 数据和排查
 
 地图与原始采集在 `data/outdoor_mapping`，服务日志在 `run`，Robonix 进程日志和
-状态在 `rbnx-boot`。Scene 标注在 `framework/robonix/system/scene/rbnx-build/data`。
+状态在 `rbnx-boot`。导航执行期记录在 `run/navigation/records/`，
+用 `scripts/summarize_record.py` 复盘，详见服务仓库的 `docs/RECORDING.md`。Scene 标注在 `framework/robonix/system/scene/rbnx-build/data`。
 更新和清理构建前保留这些数据。
 
 只看状态可读取 `http://127.0.0.1:19980/status`（定位）、

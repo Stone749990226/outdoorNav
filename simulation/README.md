@@ -13,7 +13,7 @@ uv venv --system-site-packages --python /usr/bin/python3 simulation/.venv
 uv pip install --python simulation/.venv/bin/python -e robonix/pylib/robonix-api \
   -r robot-deep_robotics-lynx_s10/outdoor/requirements.txt
 # 在已有部署上可直接复用其 uv 环境和已构建依赖：
-SIM_DEPS_ROOT=/home/nvidia/robot-deep_robotics-lynx_s10/outdoor bash simulation/start.sh
+SIM_DEPS_ROOT=/home/nvidia/outdoorNav-workspace/robot-deep_robotics-lynx_s10/outdoor bash simulation/start.sh
 ```
 
 在山猫上运行时，电脑转发两个模拟端口：
@@ -35,11 +35,11 @@ Ctrl-C 停止本次模拟；重新启动后虚拟山猫回到配置起点。
 
 ```bash
 # 复制旧地图到模拟目录；不修改原文件。起点需在该图道路附近。
-SIM_DEPS_ROOT=/home/nvidia/robot-deep_robotics-lynx_s10/outdoor bash simulation/start.sh \
+SIM_DEPS_ROOT=/home/nvidia/outdoorNav-workspace/robot-deep_robotics-lynx_s10/outdoor bash simulation/start.sh \
   --map /path/to/map.json
 
 # 执行到点、步态、取消、IMU 断流与恢复检查，完成后退出：
-SIM_DEPS_ROOT=/home/nvidia/robot-deep_robotics-lynx_s10/outdoor bash simulation/start.sh --smoke
+SIM_DEPS_ROOT=/home/nvidia/outdoorNav-workspace/robot-deep_robotics-lynx_s10/outdoor bash simulation/start.sh --smoke
 ```
 
 更换地图或同时开第二套模拟时，使用独立 `--run-dir` 和不同端口/domain 的 `--config`。
@@ -53,7 +53,7 @@ SIM_DEPS_ROOT=/home/nvidia/robot-deep_robotics-lynx_s10/outdoor bash simulation/
 
 ```bash
 cd /home/nvidia/outdoorNav-simulation
-SIM_DEPS_ROOT=/home/nvidia/robot-deep_robotics-lynx_s10/outdoor \
+SIM_DEPS_ROOT=/home/nvidia/outdoorNav-workspace/robot-deep_robotics-lynx_s10/outdoor \
 bash simulation/start.sh
 ```
 
