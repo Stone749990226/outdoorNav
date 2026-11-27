@@ -47,7 +47,7 @@ unset ROBONIX_VLM_API_KEY
 
 Robonix 随清单启动 Pilot，不用另开 Pilot 脚本。换 OpenAI 兼容服务时，换 API 基础地址（不含 `/chat/completions`）、模型名和密钥即可。
 
-1. 在电脑运行 `ssh -p 6003 -N -L 50108:127.0.0.1:50108 nvidia@svr.gddg08.top`，打开 `http://127.0.0.1:50108/outdoor`，加载地图并标注地点。
+1. 在电脑运行 `ssh -N -L 50108:127.0.0.1:50108 nvidia@10.29.1.4`，打开 `http://127.0.0.1:50108/outdoor`，加载地图并标注地点。
 2. 在山猫另开终端运行 `rbnx chat --server 127.0.0.1:51551`，例如输入「帮我在室外导航到快递点」。Scene 从当前地图第一个已录道路点画出路线，只报告距离，不执行。
 
 ## 首次准备
@@ -115,7 +115,7 @@ rbnx shutdown -f robonix_manifest.field.yaml
 在电脑转发网页端口：
 
 ```bash
-ssh -p 6003 -N -L 50110:127.0.0.1:50108 nvidia@svr.gddg08.top
+ssh -N -L 50110:127.0.0.1:50108 nvidia@10.29.1.4
 ```
 
 打开 `http://127.0.0.1:50110/outdoor`。

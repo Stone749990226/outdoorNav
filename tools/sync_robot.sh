@@ -2,7 +2,7 @@
 # Copy the workspace into the single robot tree; build and lifecycle stay native.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-REMOTE="nvidia@svr.gddg08.top"
+REMOTE="nvidia@10.29.1.4"
 WORKSPACE="/home/nvidia/outdoorNav-workspace"
 DEPLOY="$WORKSPACE/robot-deep_robotics-lynx_s10/outdoor"
 FLAGS=(-az --delete --exclude=.git --exclude=.venv --exclude=__pycache__
@@ -33,10 +33,10 @@ elif [[ $# != 0 ]]; then
   echo "Usage: bash tools/sync_robot.sh [--dry-run]" >&2
   exit 2
 fi
-export RSYNC_RSH='ssh -p 6003 -o BatchMode=yes -o ConnectTimeout=8'
+export RSYNC_RSH='ssh -o BatchMode=yes -o ConnectTimeout=8'
 EXAMPLE_MAP=data/examples/example-campus/map.json
 if [[ "${1:-}" != "--dry-run" ]]; then
-  ssh -p 6003 -o BatchMode=yes -o ConnectTimeout=8 "$REMOTE" \
+  ssh -o BatchMode=yes -o ConnectTimeout=8 "$REMOTE" \
     "flock -n '$DEPLOY/run/boot.lock' true" || {
       echo "Stop the deployment with rbnx shutdown before syncing." >&2
       exit 1
